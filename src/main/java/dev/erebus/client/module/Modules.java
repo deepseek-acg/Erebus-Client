@@ -13,6 +13,7 @@ public final class Modules {
 
     public static void registerAll(ModuleManager modules) {
         modules.register(new MapModule());
+        modules.register(new dev.erebus.client.module.world.SeedCracker());
         modules.register(new StashESP());
         modules.register(new PlayerBlocks());
         modules.register(new OldChunks());

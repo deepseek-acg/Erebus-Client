@@ -66,6 +66,7 @@ obsidian, XP bottles), Armor, and Notifications.
 | Module | Category | What it does |
 | --- | --- | --- |
 | Map | World | Records a map of every chunk you load, per server and dimension, and recognises structures (trial chambers, ancient cities, strongholds, monuments, fortresses, bastions, end cities and more) from their blocks. On by default. |
+| Seed Cracker | World | Works out the world seed from desert pyramids, jungle temples, swamp huts and buried treasure you come across. Proof of concept for servers with vanilla world generation settings. |
 | Stash ESP | Basefinding | Outlines and tracers to storage and other base giveaways (chests, shulkers, ender chests, furnaces, villagers, item frames, chest minecarts...). Alerts when an area looks like a base or a stash, marks it on the map and logs it to `erebus/finds.txt`. |
 | Player Blocks | Basefinding | Highlights blocks the world never generates (concrete, shulkers, beacons, mineral blocks, redstone parts...) and building materials where they don't belong, skipping natural structures and biomes where they occur naturally. Lets Stash ESP tell bases from stashes. |
 | Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
@@ -185,6 +186,31 @@ Damage is estimated with vanilla's explosion formula, including block exposure, 
 Resistance and Protection/Blast Protection (`util/ExplosionDamage`). Mist's silent rotations,
 session fatigue and server presets were not ported; these turn the real camera.
 
+## Seed Cracker (proof of concept)
+
+Turn it on and travel: it watches the overworld chunks the server sends you for structures whose start
+chunk can be read exactly from their blocks, keeps them per server in `.minecraft/erebus/seeds/`, and
+cracks the seed by itself once it has enough. Nothing is sent to the server.
+
+- **What it reads.** Desert pyramids (the blue terracotta in the middle of the floor), jungle temples
+  (the lever puzzle's sticky pistons), swamp huts (the cauldron next to the crafting table) and buried
+  treasure (a chest at the same spot in its chunk, under sand). Each marker has to sit exactly where
+  one of the structure's four orientations puts it, so player builds don't count.
+- **Low 48 bits.** Structures pick their chunk inside a region with Java's 48-bit random generator,
+  seeded from the seed, the region and a per-structure salt. Each temple's position fixes some low
+  bits outright (24 = 8 x 3 positions per axis), so the low 20 bits are brute-forced against all of
+  them, then the remaining 28 bits for each survivor (`seed/SeedSolver`).
+- **Top 16 bits.** Structures never use them. The server sends a hash of the full seed (the first 8
+  bytes of its SHA-256, which the client uses for biome blending); all 65,536 options are hashed and
+  compared.
+- **Checked twice.** The result is re-checked against every recorded structure with the game's own
+  structure placement code before it's reported.
+
+In testing it found a world's seed from 6 structures (3 desert pyramids, 3 swamp huts) in about 7
+seconds; buried treasure cuts that to 3 or 4 temples. It's a proof of concept for vanilla settings:
+servers that change structure salts (`spigot.yml`) or hide the hashed seed need more work. Actions in
+the dashboard: Crack now, Copy seed, Forget this server.
+
 ## Map
 
 Press M. Drag to move, scroll to zoom toward the cursor, Space to jump back to yourself, Tab for
@@ -244,6 +270,7 @@ src/main/java/dev/erebus/client/
   render/                2D drawing primitives, world-to-screen projection
   render/font/           Erebus Sans renderer (stb_truetype glyph atlases) and icons
   input/                 simulated mouse and key input, crosshair prediction
+  seed/                  seed cracking: structure scanner, solver, per-server data
   util/                  explosion damage estimate
   config/                JSON persistence
   notify/                toast notifications

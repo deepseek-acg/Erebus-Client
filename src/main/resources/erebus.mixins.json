@@ -4,6 +4,7 @@
   "package": "dev.erebus.client.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "BiomeManagerAccessor",
     "KeyboardHandlerMixin",
     "MouseHandlerMixin"
   ],
