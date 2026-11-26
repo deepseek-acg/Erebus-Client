@@ -27,6 +27,16 @@ public final class Crosshair {
     private Crosshair() {
     }
 
+    /** Which of the points that work to aim at. */
+    public enum AimPoint {
+        /** The point needing the smallest turn from where the crosshair is now. */
+        NEAREST,
+        /** The point closest to the middle of the face. */
+        CENTER,
+        /** Any point that works, picked at random. */
+        RANDOM
+    }
+
     /** The view a target is reached with, and where on the block the crosshair lands. */
     public record Aim(float yaw, float pitch, Vec3 point) {
     }
@@ -79,6 +89,16 @@ public final class Crosshair {
      * the click. Of all the views that work, the one closest to where the player looks now. Null if none does.
      */
     public static Aim solve(BlockPos pos, Direction face) {
+        return solve(pos, face, AimPoint.NEAREST, 0.12);
+    }
+
+    /**
+     * Like {@link #solve(BlockPos, Direction)}, choosing among the working points with {@code mode} and keeping
+     * {@code margin} (0..0.45, as a fraction of the face) away from its edges.
+     */
+    public static Aim solve(BlockPos pos, Direction face, AimPoint mode, double margin) {
+        margin = Math.max(0.02, Math.min(0.45, margin));
+        java.util.List<Aim> valid = mode == AimPoint.RANDOM ? new java.util.ArrayList<>() : null;
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer p = mc.player;
         BlockState state = p.level().getBlockState(pos);
@@ -109,7 +129,7 @@ public final class Crosshair {
                 if ((d.getAxisDirection() == Direction.AxisDirection.POSITIVE) ? eyeSide <= plane : eyeSide >= plane) continue;
                 for (int i = 0; i < 5; i++) {
                     for (int j = 0; j < 5; j++) {
-                        double u = 0.12 + 0.76 * i / 4.0, v = 0.12 + 0.76 * j / 4.0;
+                        double u = margin + (1 - 2 * margin) * i / 4.0, v = margin + (1 - 2 * margin) * j / 4.0;
                         Vec3 pt = switch (d.getAxis()) {
                             case X -> new Vec3(plane, Mth.lerp(u, b.minY, b.maxY), Mth.lerp(v, b.minZ, b.maxZ));
                             case Y -> new Vec3(Mth.lerp(u, b.minX, b.maxX), plane, Mth.lerp(v, b.minZ, b.maxZ));
@@ -118,18 +138,24 @@ public final class Crosshair {
                         Vec3 to = pt.subtract(eye);
                         float yaw = (float) Math.toDegrees(Math.atan2(-to.x, to.z));
                         float pitch = (float) Math.toDegrees(-Math.atan2(to.y, Math.sqrt(to.x * to.x + to.z * to.z)));
-                        double cost = Math.hypot(Mth.wrapDegrees(yaw - curYaw), pitch - curPitch);
-                        if (cost >= bestCost) continue;
+                        double cost = mode == AimPoint.CENTER ? Math.hypot(u - 0.5, v - 0.5) * 100 + Math.hypot(Mth.wrapDegrees(yaw - curYaw), pitch - curPitch) * 0.01
+                                : Math.hypot(Mth.wrapDegrees(yaw - curYaw), pitch - curPitch);
+                        if (valid == null && cost >= bestCost) continue;
                         // pull the view onto the nearest whole-yaw step the camera can reach from here
                         float qYaw = curYaw + quantize(Mth.wrapDegrees(yaw - curYaw));
                         float qPitch = Mth.clamp(curPitch + quantize(pitch - curPitch), -90f, 90f);
                         if (!hits(qYaw, qPitch, pos, face == null ? null : d)) continue;
+                        if (valid != null) {
+                            valid.add(new Aim(qYaw, qPitch, pt));
+                            continue;
+                        }
                         best = new Aim(qYaw, qPitch, pt);
                         bestCost = cost;
                     }
                 }
             }
         }
+        if (valid != null) return valid.isEmpty() ? null : valid.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(valid.size()));
         return best;
     }
 

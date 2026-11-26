@@ -70,7 +70,8 @@ obsidian, XP bottles), Armor, and Notifications.
 | Player Blocks | Basefinding | Highlights blocks the world never generates (concrete, shulkers, beacons, mineral blocks, redstone parts...) and building materials where they don't belong, skipping natural structures and biomes where they occur naturally. Lets Stash ESP tell bases from stashes. |
 | Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
 | Logout Spots | Render | Marks where players were standing when they logged out, with name, health and how long ago. |
-| Auto Safe Anchor | Combat | One press: places a respawn anchor where you look, charges it, puts a glowstone shield between you and the blast, detonates it, then turns off. Ported from Mist. |
+| Auto Safe Anchor | Combat | One press: places a respawn anchor where you look, charges it, puts a shield block between you and the blast, detonates it, then turns off. Ported from Mist. |
+| Anchor Aura | Combat | Runs the same sequence by itself at whichever nearby spot hurts an opponent most, never inside anyone's hitbox and never at a spot that could kill you. Ported from Mist. |
 
 Map, Stash ESP, Player Blocks, Old Chunks and Logout Spots are ported from Nyx and adapted to
 1.21.11. Compared with Nyx: the minimap is a HUD element you can place anywhere, there are personal
@@ -79,10 +80,10 @@ highlight any of them in the world, world labels are drawn as crisp HUD text, an
 "Silent Mode" confidence scoring became a plain "Dim lone blocks" option. Nyx's team map sharing,
 navigator integration and editable block lists were not ported.
 
-## Auto Safe Anchor and simulated input
+## Anchor modules and simulated input
 
-Auto Safe Anchor never builds interactions or packets itself. Everything it does is simulated
-input that the game then handles exactly like a player's:
+Auto Safe Anchor and Anchor Aura never build interactions or packets themselves. Everything they do
+is simulated input that the game then handles exactly like a player's:
 
 - the hotbar slot is picked by pressing its number key (`input/InputSim`),
 - the camera turns through synthetic mouse movement fed into Minecraft's own mouse handling, so
@@ -91,18 +92,37 @@ input that the game then handles exactly like a player's:
 - crouching is the sneak key held down,
 - every click is the use key, so the game sends its own packet for whatever its own crosshair hits.
 
-Before clicking it predicts the crosshair with the same raycast the game uses (`input/Crosshair`) and
-picks a point on the block face that the crosshair can actually reach, so a snow layer, plant,
+Before clicking they predict the crosshair with the same raycast the game uses (`input/Crosshair`)
+and pick a point on the block face that the crosshair can actually reach, so a snow layer, plant,
 berry bush, item frame or crystal in the way is aimed around instead of being clicked by mistake.
-A click only goes out once the camera has been still for a full tick, so the server already has
-the view the click is made with. Blocks whose right-click does something else (containers,
-doors, crafting stations, berry bushes, cake, beds...) are never used as a support to place
-against.
+A click only goes out once the camera has been still long enough that the server already has the
+view the click is made with. Blocks whose right-click does something else (containers, doors,
+crafting stations, berry bushes, cake, beds...) are never used as a support to place against.
 
-Bind it to a key in the dashboard (Combat). Options include aim speed, holding the camera while it
-turns, looking back afterwards, crouch-placing against the anchor, shield retries, and repeating
-while the key is held. Mist's silent rotations, session fatigue and CrystalAura/AnchorAura hand-off
-were not ported; this version turns the real camera.
+Both share one sequence (`module/combat/AnchorSequence`): place, charge, shield, detonate, check it
+went off. Every part of it can be tuned:
+
+| Group | Settings |
+| --- | --- |
+| Timing | Start delay; delays after placing, charging and shielding; delay when no shield is placed; swap delay (or click in the same tick as the slot switch); settle time before a click; crouch and stand delays; random extra ticks with a uniform or Gaussian spread; detonate check; charge and detonate attempts; timeout. |
+| Camera | Max and min turn speed, easing, how much the path curves, overshoot chance and amount, aim point on a face (nearest, center or random) and edge margin, holding the camera against your own mouse, looking back afterwards with its own delay and speed. |
+| Shield | Always, only when the blast would reach you (with a damage threshold), or never; shield block (glowstone, obsidian, or any full block in your hotbar); crouch-placing against the anchor; how far to search for a shield spot; retries; whether to detonate when the shield never went down. |
+| Items | Detonate with an empty slot, a safe item or a fixed slot; swap back to your slot. |
+| Safety | Anti suicide with a health margin (checked with an explosion damage estimate right before detonating); wait or cancel while you're eating or blocking; only start on the ground; warnings. |
+| Render | Outline the anchor and shield spots while it runs, with their colors. |
+
+Auto Safe Anchor adds using an anchor you're looking at and repeating (with a delay) while its key
+is held. Anchor Aura adds target range, place range, target priority (closest, lowest health, most
+damage), ignoring unarmored players or names, min damage, max self damage, how much self damage
+counts against a spot, a lethal override, a lower min damage against low-health opponents, re-arm
+delay and randomness, per-spot cooldown, search interval, an optional key to hold for it to run,
+and a chance to take a nearly-as-good spot so cycles don't all look the same. "Target mobs" lets
+you try settings out on a dummy.
+
+Damage is estimated with vanilla's explosion formula, including block exposure, armor, toughness,
+Resistance and Protection/Blast Protection (`util/ExplosionDamage`). Mist's silent rotations,
+session fatigue, server presets and CrystalAura hand-off were not ported; these turn the real
+camera.
 
 ## Map
 
@@ -159,11 +179,12 @@ src/main/java/dev/erebus/client/
   gui/map/               full-screen map
   theme/                 theme model and presets
   setting/               setting types shared by modules and HUD elements
-  module/                module base class, manager and modules (world/, basefinding/, render/)
+  module/                module base class, manager and modules (world/, basefinding/, render/, combat/)
   render/                2D drawing primitives, world-to-screen projection
   render/font/           Erebus Sans renderer (stb_truetype glyph atlases) and icons
   input/                 simulated mouse and key input, crosshair prediction
-tools/build_font.py      builds Erebus Sans from Geist
+  util/                  explosion damage estimate
   config/                JSON persistence
   notify/                toast notifications
+tools/build_font.py      builds Erebus Sans from Geist
 ```
