@@ -19,5 +19,6 @@ public final class Modules {
         modules.register(new LogoutSpots());
         modules.register(new dev.erebus.client.module.combat.AutoSafeAnchor());
         modules.register(new dev.erebus.client.module.combat.AnchorAura());
+        modules.register(new dev.erebus.client.module.combat.AutoCrystal());
     }
 }

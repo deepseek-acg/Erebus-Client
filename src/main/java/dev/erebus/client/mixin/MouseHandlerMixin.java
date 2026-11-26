@@ -18,6 +18,7 @@ public abstract class MouseHandlerMixin {
 
     @Inject(method = "handleAccumulatedMovement", at = @At("HEAD"))
     private void erebus$syntheticMouse(CallbackInfo ci) {
+        MouseSim.noteUserMovement(accumulatedDX, accumulatedDY);
         if (!MouseSim.active()) return;
         if (MouseSim.returning() && (accumulatedDX != 0 || accumulatedDY != 0)) { // the player took the mouse back
             MouseSim.stop();

@@ -71,6 +71,7 @@ obsidian, XP bottles), Armor, and Notifications.
 | Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
 | Logout Spots | Render | Marks where players were standing when they logged out, with name, health and how long ago. |
 | Auto Safe Anchor | Combat | One press: places a respawn anchor where you look, charges it, puts a shield block between you and the blast, detonates it, then turns off. Ported from Mist. |
+| Auto Crystal | Combat | Places and breaks end crystals on nearby opponents, placing obsidian only when it clearly pays off. Ported from Mist's CrystalAura. |
 | Anchor Aura | Combat | Runs the same sequence by itself at whichever nearby spot hurts an opponent most, never inside anyone's hitbox and never at a spot that could kill you. Ported from Mist. |
 
 Map, Stash ESP, Player Blocks, Old Chunks and Logout Spots are ported from Nyx and adapted to
@@ -80,9 +81,9 @@ highlight any of them in the world, world labels are drawn as crisp HUD text, an
 "Silent Mode" confidence scoring became a plain "Dim lone blocks" option. Nyx's team map sharing,
 navigator integration and editable block lists were not ported.
 
-## Anchor modules and simulated input
+## Combat modules and simulated input
 
-Auto Safe Anchor and Anchor Aura never build interactions or packets themselves. Everything they do
+Auto Safe Anchor, Anchor Aura and Auto Crystal never build interactions or packets themselves. Everything they do
 is simulated input that the game then handles exactly like a player's:
 
 - the hotbar slot is picked by pressing its number key (`input/InputSim`),
@@ -90,7 +91,8 @@ is simulated input that the game then handles exactly like a player's:
   the turn goes through your sensitivity, comes in whole mouse steps and respects inverted mouse
   settings (`input/MouseSim`, `mixin/MouseHandlerMixin`),
 - crouching is the sneak key held down,
-- every click is the use key, so the game sends its own packet for whatever its own crosshair hits.
+- every click is the use key (or, to break a crystal, the attack key), so the game sends its own
+  packet for whatever its own crosshair hits.
 
 Before clicking they predict the crosshair with the same raycast the game uses (`input/Crosshair`)
 and pick a point on the block face that the crosshair can actually reach, so a snow layer, plant,
@@ -119,10 +121,52 @@ delay and randomness, per-spot cooldown, search interval, an optional key to hol
 and a chance to take a nearly-as-good spot so cycles don't all look the same. "Target mobs" lets
 you try settings out on a dummy.
 
+The three share the camera, hotbar and keys through one lock (`input/InputLock`): only one of them
+clicks at a time, the automatic ones wait for each other, and pressing Auto Safe Anchor's key takes
+over from whatever is running.
+
+### Auto Crystal
+
+Ported from Mist's CrystalAura, which places obsidian for anyone you knock up and crystals on any
+obsidian near an opponent. Breaking uses the attack key on the crosshair, so a crystal is only
+placed where you could hit it afterwards (entity reach, 3 blocks in survival).
+
+Places less obsidian:
+
+- An existing obsidian or bedrock base always wins unless a new block's crystal would do at least
+  **Min gain** more damage (2 by default).
+- A new block is only placed if the crystal still does enough damage where the opponent will be by
+  the time it goes down (their movement is extrapolated over the whole obsidian, crystal and break
+  sequence), and it's checked again right before the crystal is placed.
+- Obsidian it placed earlier is preferred, so one block is reused for many crystals.
+- A cap on blocks per time window (3 per 10 s by default), the choice between never, after a hit
+  and when needed, and avoiding the opponent's path and landing spot.
+- A spot where a placement failed is skipped for a while instead of retried.
+
+Less annoying to use:
+
+- With crystals in the offhand it places them without switching away from your weapon.
+- It swaps back and (optionally) looks back only once there's been no crystal for a few ticks, not
+  after every crystal, so the hotbar and camera don't flick back and forth mid-fight.
+- It skips spots that need a big camera turn (75° by default), and gives the mouse back right
+  after each click.
+- It pauses while you eat or block, while you hold the use key, and (by default) unless you hold a
+  weapon, an end crystal or nothing, so it never fires while you build.
+- Flicking the mouse while it turns makes it drop the crystal and stay out of the way briefly.
+- It can run always, only for a moment after you hit someone with a weapon, or only while a key
+  is held.
+- It breaks crystals already standing near the opponent when that's worth it (one click instead of
+  two), with Anti weakness switching to a sword when a fist wouldn't break them.
+
+Mist's silent rotations, burst/idle pacing, server presets and session fatigue were not ported.
+Timing, camera movement, damage limits and targeting have the same kind of settings as the anchor
+modules.
+
+### Damage estimates
+
 Damage is estimated with vanilla's explosion formula, including block exposure, armor, toughness,
 Resistance and Protection/Blast Protection (`util/ExplosionDamage`). Mist's silent rotations,
-session fatigue, server presets and CrystalAura hand-off were not ported; these turn the real
-camera.
+session fatigue and server presets were not ported; these turn the real camera.
 
 ## Map
 

@@ -32,6 +32,11 @@ public final class AutoSafeAnchor extends AnchorSequence {
     }
 
     @Override
+    protected boolean startedByPlayer() {
+        return true;
+    }
+
+    @Override
     protected boolean announcesToggle() {
         return false;
     }

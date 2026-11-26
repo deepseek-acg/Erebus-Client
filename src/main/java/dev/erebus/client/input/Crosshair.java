@@ -159,6 +159,59 @@ public final class Crosshair {
         return best;
     }
 
+    /** True if this hit is on {@code entity}. */
+    public static boolean hits(HitResult hit, net.minecraft.world.entity.Entity entity) {
+        return hit instanceof EntityHitResult e && e.getEntity() == entity;
+    }
+
+    /**
+     * A view that puts the crosshair on {@code entity}, checked with the game's raycast (so a block or another
+     * entity in front doesn't take the hit, and it's within entity reach). Null if none does.
+     */
+    public static Aim solve(net.minecraft.world.entity.Entity entity, AimPoint mode) {
+        LocalPlayer p = Minecraft.getInstance().player;
+        AABB b = entity.getBoundingBox();
+        Vec3 eye = p.getEyePosition(1f);
+        float curYaw = p.getYRot(), curPitch = p.getXRot();
+        java.util.List<Aim> valid = mode == AimPoint.RANDOM ? new java.util.ArrayList<>() : null;
+        Aim best = null;
+        double bestCost = Double.MAX_VALUE;
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                for (int k = 0; k < 3; k++) {
+                    double u = 0.2 + 0.3 * i, v = 0.2 + 0.3 * j, w = 0.2 + 0.3 * k;
+                    Vec3 pt = new Vec3(Mth.lerp(u, b.minX, b.maxX), Mth.lerp(v, b.minY, b.maxY), Mth.lerp(w, b.minZ, b.maxZ));
+                    Vec3 to = pt.subtract(eye);
+                    float yaw = (float) Math.toDegrees(Math.atan2(-to.x, to.z));
+                    float pitch = (float) Math.toDegrees(-Math.atan2(to.y, Math.sqrt(to.x * to.x + to.z * to.z)));
+                    double turn = Math.hypot(Mth.wrapDegrees(yaw - curYaw), pitch - curPitch);
+                    double cost = mode == AimPoint.CENTER ? Math.abs(u - 0.5) + Math.abs(v - 0.5) + Math.abs(w - 0.5) + turn * 0.001 : turn;
+                    if (valid == null && cost >= bestCost) continue;
+                    float qYaw = curYaw + quantize(Mth.wrapDegrees(yaw - curYaw));
+                    float qPitch = Mth.clamp(curPitch + quantize(pitch - curPitch), -90f, 90f);
+                    if (!hits(predict(qYaw, qPitch), entity)) continue;
+                    if (valid != null) {
+                        valid.add(new Aim(qYaw, qPitch, pt));
+                        continue;
+                    }
+                    best = new Aim(qYaw, qPitch, pt);
+                    bestCost = cost;
+                }
+            }
+        }
+        if (valid != null) return valid.isEmpty() ? null : valid.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(valid.size()));
+        return best;
+    }
+
+    /** Degrees the camera has to turn to look at {@code point}. */
+    public static double turnTo(Vec3 point) {
+        LocalPlayer p = Minecraft.getInstance().player;
+        Vec3 to = point.subtract(p.getEyePosition(1f));
+        float yaw = (float) Math.toDegrees(Math.atan2(-to.x, to.z));
+        float pitch = (float) Math.toDegrees(-Math.atan2(to.y, Math.sqrt(to.x * to.x + to.z * to.z)));
+        return Math.hypot(Mth.wrapDegrees(yaw - p.getYRot()), pitch - p.getXRot());
+    }
+
     /** Rounds a turn to whole mouse counts, which is the only kind of turn the camera can make. */
     private static float quantize(float degrees) {
         double step = MouseSim.degreesPerCount();
