@@ -71,6 +71,17 @@ public final class ModuleManager {
         }
     }
 
+    public void preTick() {
+        for (Module m : modules) {
+            if (!m.isEnabled()) continue;
+            try {
+                m.onPreTick();
+            } catch (Throwable t) {
+                report(m, t);
+            }
+        }
+    }
+
     public void tick() {
         for (Module m : modules) {
             if (!m.isEnabled()) continue;

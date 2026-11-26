@@ -70,6 +70,7 @@ obsidian, XP bottles), Armor, and Notifications.
 | Player Blocks | Basefinding | Highlights blocks the world never generates (concrete, shulkers, beacons, mineral blocks, redstone parts...) and building materials where they don't belong, skipping natural structures and biomes where they occur naturally. Lets Stash ESP tell bases from stashes. |
 | Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
 | Logout Spots | Render | Marks where players were standing when they logged out, with name, health and how long ago. |
+| Auto Safe Anchor | Combat | One press: places a respawn anchor where you look, charges it, puts a glowstone shield between you and the blast, detonates it, then turns off. Ported from Mist. |
 
 Map, Stash ESP, Player Blocks, Old Chunks and Logout Spots are ported from Nyx and adapted to
 1.21.11. Compared with Nyx: the minimap is a HUD element you can place anywhere, there are personal
@@ -77,6 +78,31 @@ waypoints (on the maps and in the world), finds are listed in the map's sidebar 
 highlight any of them in the world, world labels are drawn as crisp HUD text, and Stash ESP's
 "Silent Mode" confidence scoring became a plain "Dim lone blocks" option. Nyx's team map sharing,
 navigator integration and editable block lists were not ported.
+
+## Auto Safe Anchor and simulated input
+
+Auto Safe Anchor never builds interactions or packets itself. Everything it does is simulated
+input that the game then handles exactly like a player's:
+
+- the hotbar slot is picked by pressing its number key (`input/InputSim`),
+- the camera turns through synthetic mouse movement fed into Minecraft's own mouse handling, so
+  the turn goes through your sensitivity, comes in whole mouse steps and respects inverted mouse
+  settings (`input/MouseSim`, `mixin/MouseHandlerMixin`),
+- crouching is the sneak key held down,
+- every click is the use key, so the game sends its own packet for whatever its own crosshair hits.
+
+Before clicking it predicts the crosshair with the same raycast the game uses (`input/Crosshair`) and
+picks a point on the block face that the crosshair can actually reach, so a snow layer, plant,
+berry bush, item frame or crystal in the way is aimed around instead of being clicked by mistake.
+A click only goes out once the camera has been still for a full tick, so the server already has
+the view the click is made with. Blocks whose right-click does something else (containers,
+doors, crafting stations, berry bushes, cake, beds...) are never used as a support to place
+against.
+
+Bind it to a key in the dashboard (Combat). Options include aim speed, holding the camera while it
+turns, looking back afterwards, crouch-placing against the anchor, shield retries, and repeating
+while the key is held. Mist's silent rotations, session fatigue and CrystalAura/AnchorAura hand-off
+were not ported; this version turns the real camera.
 
 ## Map
 
@@ -110,7 +136,7 @@ waypoints.
 ## Adding modules
 
 Extend `dev.erebus.client.module.Module`, add settings with `add(...)` (use `group("...")` to
-start a new section), override `onTick`, `onRenderWorld` (draw with Minecraft's `Gizmos`) or
+start a new section), override `onPreTick` (runs before the game handles input, for simulated input), `onTick`, `onRenderWorld` (draw with Minecraft's `Gizmos`) or
 `onRenderOverlay` (2D, with `Projection` for world positions), and register it in
 `dev.erebus.client.module.Modules`. It then shows up in its category, in search, in the module
 list HUD and in the keybind system, and its settings are saved automatically.
@@ -136,6 +162,7 @@ src/main/java/dev/erebus/client/
   module/                module base class, manager and modules (world/, basefinding/, render/)
   render/                2D drawing primitives, world-to-screen projection
   render/font/           Erebus Sans renderer (stb_truetype glyph atlases) and icons
+  input/                 simulated mouse and key input, crosshair prediction
 tools/build_font.py      builds Erebus Sans from Geist
   config/                JSON persistence
   notify/                toast notifications

@@ -41,6 +41,8 @@ public final class ErebusClient implements ClientModInitializer {
             dev.erebus.client.module.basefinding.BaseFinds.render(wr);
         });
 
+        ClientTickEvents.START_CLIENT_TICK.register(mc -> Erebus.modules().preTick());
+
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
             Erebus.hud().tick(mc);
             Erebus.modules().tick();

@@ -78,7 +78,7 @@ public abstract class Module {
         } catch (Throwable t) {
             org.slf4j.LoggerFactory.getLogger("Erebus").warn("{} failed to {}", name, on ? "enable" : "disable", t);
         }
-        if (announce) Notifications.moduleToggled(name, on);
+        if (announce && announcesToggle()) Notifications.moduleToggled(name, on);
     }
 
     public void toggle() {
@@ -115,6 +115,18 @@ public abstract class Module {
     }
 
     protected void onDisable() {
+    }
+
+    /** Whether turning this module on or off shows a toast (one-shot modules report their own outcome instead). */
+    protected boolean announcesToggle() {
+        return true;
+    }
+
+    /**
+     * Called at the start of every client tick while enabled, before the game reads the crosshair and handles
+     * key presses. Input simulated here (see dev.erebus.client.input) is handled by the game in this same tick.
+     */
+    public void onPreTick() {
     }
 
     /** Called at the end of every client tick while enabled. */

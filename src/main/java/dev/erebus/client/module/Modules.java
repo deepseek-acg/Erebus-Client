@@ -17,5 +17,6 @@ public final class Modules {
         modules.register(new PlayerBlocks());
         modules.register(new OldChunks());
         modules.register(new LogoutSpots());
+        modules.register(new dev.erebus.client.module.combat.AutoSafeAnchor());
     }
 }
