@@ -5,6 +5,11 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "BiomeManagerAccessor",
+    "FreecamCameraMixin",
+    "FreecamClickMixin",
+    "FreecamEntityMixin",
+    "FreecamHandMixin",
+    "FreecamInputMixin",
     "KeyboardHandlerMixin",
     "MouseHandlerMixin"
   ],

@@ -65,11 +65,12 @@ obsidian, XP bottles), Armor, and Notifications.
 
 | Module | Category | What it does |
 | --- | --- | --- |
-| Map | World | Records a map of every chunk you load, per server and dimension, and recognises structures (trial chambers, ancient cities, strongholds, monuments, fortresses, bastions, end cities and more) from their blocks. On by default. |
+| Map | World | Records a map of every chunk you load, per server and dimension, and recognises structures (trial chambers, ancient cities, strongholds, monuments, fortresses, bastions, end cities, temples, swamp huts and more), each confirmed against its real layout so builds aren't flagged. On by default. |
 | Seed Cracker | World | Works out the world seed from desert pyramids, jungle temples, swamp huts and buried treasure you come across. Proof of concept for servers with vanilla world generation settings. |
 | Stash ESP | Basefinding | Outlines and tracers to storage and other base giveaways (chests, shulkers, ender chests, furnaces, villagers, item frames, chest minecarts...). Alerts when an area looks like a base or a stash, marks it on the map and logs it to `erebus/finds.txt`. |
 | Player Blocks | Basefinding | Highlights blocks the world never generates (concrete, shulkers, beacons, mineral blocks, redstone parts...) and building materials where they don't belong, skipping natural structures and biomes where they occur naturally. Lets Stash ESP tell bases from stashes. |
 | Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
+| Freecam | Render | Flies the camera away from your player while your player stays put. Client-side only. Ported from Nyx. |
 | Logout Spots | Render | Marks where players were standing when they logged out, with name, health and how long ago. |
 | Auto Safe Anchor | Combat | One press: places a respawn anchor where you look, charges it, puts a shield block between you and the blast, detonates it, then turns off. Ported from Mist. |
 | Crystal Aura | Combat | Places and breaks end crystals on nearby opponents as fast as the server answers, sticking to one spot and placing obsidian only when it clearly pays off. Ported from Mist. |
@@ -218,6 +219,45 @@ the sidebar, G for the chunk grid. Right-click anywhere to add a waypoint, cente
 coordinates; right-click a base, stash or structure to highlight it in the world, mark it
 explored, or forget it. The sidebar lists everything found (closest first) and your waypoints,
 which you can rename in place.
+
+### Structure detection
+
+Block counts only pick out candidates; nothing is marked until the structure's actual layout is
+confirmed, so player builds made of the same blocks (prismarine farms, nether brick or purpur
+bases, decorative portals, TNT traps) aren't flagged:
+
+| Structure | Confirmed by |
+| --- | --- |
+| Desert pyramid, jungle temple, swamp hut | A marker (the floor's blue terracotta, the lever puzzle's sticky pistons, the cauldron by the crafting table) at the exact spot in its start chunk that the game's code puts it, for one of its four orientations. |
+| Stronghold | The portal room's full ring of 12 end portal frames. |
+| Ocean monument | Dark prismarine and sea lanterns only at the monument's height (y 39-61) and inside its 58-block square, under water at sea level. |
+| Nether fortress | Its blaze spawner, or a stretch of its standard bridge: a 5-wide double deck with walls on both edges and open air above. |
+| End city, bastion, ruined portal | A match against the game's own structure templates (read from the game files): most of a piece's blocks in exactly the template's positions, in one of its 8 rotations and mirrorings. Ruined portals also need their stone-brick trim in place and no lit portal. |
+| Trial chamber, ancient city, end gateway, geode, archaeology | Blocks that can't be obtained in survival (vaults and trial spawners, reinforced deepslate, gateways in bedrock, budding amethyst, suspicious sand and gravel). |
+
+The Map module's dashboard page has **Rescan structures** (check loaded chunks again) and **Forget
+structures** (drop every structure marker on this map and rescan), for clearing markers left by
+older versions.
+
+## Freecam
+
+Detaches the camera so you can fly it around (WASD, jump and sneak for up and down, sprint for
+2.5x speed) and look with the mouse, while your player stands still. It only changes what's
+rendered and where your movement keys and mouse go: nothing about your player's position,
+rotation or packets changes, so the server sees you standing where you are.
+
+- **Freeze player**: your movement keys stop reaching your player, as if you let go of them.
+- **Block clicks**: attack and use clicks do nothing while the camera is out, so you don't hit or
+  use whatever your real player happens to be looking at.
+- **Keep entities visible**: players, mobs and items near your player stay drawn however far the
+  camera goes.
+- **Spectate mode**: the camera stays inside loaded chunks and within a distance of your player,
+  and follows you if the server moves you.
+- It turns off when you take damage (optional), and pauses the combat modules while it's on.
+
+Nyx's silent rotations and movement-packet freezing were left out (they change what's sent), and
+the player is no longer pinned in place against knockback, which would put the client out of step
+with the server.
 
 ## Font
 

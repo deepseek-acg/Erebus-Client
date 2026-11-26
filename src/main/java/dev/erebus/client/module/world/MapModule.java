@@ -37,9 +37,9 @@ import java.util.Map;
 public final class MapModule extends Module {
     /** Structures that can be recognised from blocks that never generate anywhere else. */
     public enum Structure {
-        TrialChamber("Trial Chamber", 0xFFE0823D, 64), AncientCity("Ancient City", 0xFF2DD4BF, 160), Stronghold("Stronghold", 0xFF86EFAC, 128),
+        TrialChamber("Trial Chamber", 0xFFE0823D, 96), AncientCity("Ancient City", 0xFF2DD4BF, 160), Stronghold("Stronghold", 0xFF86EFAC, 128),
         OceanMonument("Ocean Monument", 0xFF5EEAD4, 72), DesertPyramid("Desert Pyramid", 0xFFFDE68A, 32), JungleTemple("Jungle Temple", 0xFF65A30D, 32),
-        RuinedPortal("Ruined Portal", 0xFFA855F7, 24), Geode("Amethyst Geode", 0xFFC084FC, 24), Archaeology("Archaeology Site", 0xFFD6B98C, 32),
+        SwampHut("Swamp Hut", 0xFF4D7C0F, 24), RuinedPortal("Ruined Portal", 0xFFA855F7, 24), Geode("Amethyst Geode", 0xFFC084FC, 24), Archaeology("Archaeology Site", 0xFFD6B98C, 32),
         NetherFortress("Nether Fortress", 0xFFB91C1C, 128), Bastion("Bastion Remnant", 0xFFFBBF24, 72), EndCity("End City", 0xFFE879F9, 80),
         EndGateway("End Gateway", 0xFF94A3B8, 16);
 
@@ -103,20 +103,23 @@ public final class MapModule extends Module {
             String how = switch (st) {
                 case TrialChamber -> "vaults and trial spawners among 40+ tuff bricks";
                 case AncientCity -> "12+ reinforced deepslate below y=0, 60+ deepslate tiles or bricks, and sculk shriekers, sensors or soul lanterns";
-                case Stronghold -> "4+ end portal frames among 80+ stone bricks";
-                case OceanMonument -> "150+ prismarine bricks or dark prismarine with 4+ sea lanterns, underwater";
-                case DesertPyramid -> "the 8+ TNT trap with its pressure plate, among chiseled or cut sandstone";
-                case JungleTemple -> "40+ mossy cobblestone, chiseled stone bricks, tripwire hooks, sticky pistons and levers";
-                case RuinedPortal -> "crying obsidian in a 4+ obsidian frame with netherrack (and magma or gold blocks) around it";
+                case Stronghold -> "the portal room's full ring of 12 end portal frames";
+                case OceanMonument -> "dark prismarine and sea lanterns only at the monument's height (y 39-61) and within its 58-block "
+                        + "square, under water";
+                case DesertPyramid -> "the blue terracotta in the middle of its floor, at the exact spot in its chunk the game puts it";
+                case JungleTemple -> "the lever puzzle's sticky pistons, at the exact spot in its chunk the game puts them";
+                case SwampHut -> "its cauldron next to the crafting table, at the exact spot in its chunk the game puts them";
+                case RuinedPortal -> "a match with one of the game's ruined portal templates (obsidian, bricks and netherrack in place), "
+                        + "and no lit portal";
                 case Geode -> "budding amethyst with 20+ amethyst, 30+ calcite and 30+ smooth basalt";
                 case Archaeology -> "3+ suspicious sand or gravel close together";
-                case NetherFortress -> "250+ nether bricks with 8+ fences and stairs";
-                case Bastion -> "gilded blackstone among 100+ polished blackstone bricks, with chains";
-                case EndCity -> "250+ purpur with purpur stairs, end stone bricks and end rods";
+                case NetherFortress -> "its blaze spawner, or a stretch of its standard bridge (5-wide double deck with walls on both edges)";
+                case Bastion -> "a match with one of the game's bastion templates";
+                case EndCity -> "a match with one of the game's end city templates";
                 case EndGateway -> "the gateway block held in bedrock";
             };
             findStruct.put(st, add(new BoolSetting(st.title, "Find " + st.title.toLowerCase(Locale.ROOT) + "s. Needs " + how
-                    + ", all within a 48x48 block area.", st != Structure.Geode && st != Structure.Archaeology && st != Structure.EndGateway)));
+                    + ".", st != Structure.Geode && st != Structure.Archaeology && st != Structure.EndGateway)));
         }
         announce = add(new BoolSetting("Announce in chat", "Say in chat when a new structure is found.", true));
     }
@@ -149,12 +152,23 @@ public final class MapModule extends Module {
 
     @Override
     public List<Action> actions() {
-        return List.of(new Action("Open map", MapModule::openFullMap));
+        return List.of(
+                new Action("Open map", MapModule::openFullMap),
+                new Action("Rescan structures", () -> {
+                    rescanStructures();
+                    chat("Looking for structures in loaded chunks again.");
+                }),
+                new Action("Forget structures", () -> {
+                    int n = MapStore.clearStructures();
+                    rescanStructures();
+                    chat("Forgot " + n + " structure markers on this map; loaded chunks are checked again.");
+                }));
     }
 
     @Override
     protected void onEnable() {
         scannedAt.clear();
+        structScanned.clear();
         orderCx = Integer.MIN_VALUE;
     }
 
@@ -360,13 +374,14 @@ public final class MapModule extends Module {
         net.minecraft.world.level.block.Blocks.GOLD_BLOCK, net.minecraft.world.level.block.Blocks.BUDDING_AMETHYST,
         net.minecraft.world.level.block.Blocks.AMETHYST_BLOCK, net.minecraft.world.level.block.Blocks.CALCITE,
         net.minecraft.world.level.block.Blocks.SMOOTH_BASALT, net.minecraft.world.level.block.Blocks.SUSPICIOUS_SAND,
-        net.minecraft.world.level.block.Blocks.SUSPICIOUS_GRAVEL));
+        net.minecraft.world.level.block.Blocks.SUSPICIOUS_GRAVEL, net.minecraft.world.level.block.Blocks.BLUE_TERRACOTTA,
+        net.minecraft.world.level.block.Blocks.CAULDRON));
     private static final java.util.Set<net.minecraft.world.level.block.Block> NETHER_KEYS = java.util.Set.of(B(
         net.minecraft.world.level.block.Blocks.NETHER_BRICKS, net.minecraft.world.level.block.Blocks.NETHER_BRICK_FENCE,
         net.minecraft.world.level.block.Blocks.NETHER_BRICK_STAIRS, net.minecraft.world.level.block.Blocks.GILDED_BLACKSTONE,
         net.minecraft.world.level.block.Blocks.POLISHED_BLACKSTONE_BRICKS, net.minecraft.world.level.block.Blocks.CRYING_OBSIDIAN,
         net.minecraft.world.level.block.Blocks.OBSIDIAN, net.minecraft.world.level.block.Blocks.GOLD_BLOCK,
-        net.minecraft.world.level.block.Blocks.IRON_CHAIN));
+        net.minecraft.world.level.block.Blocks.IRON_CHAIN, net.minecraft.world.level.block.Blocks.SPAWNER));
     private static final java.util.Set<net.minecraft.world.level.block.Block> END_KEYS = java.util.Set.of(B(
         net.minecraft.world.level.block.Blocks.PURPUR_BLOCK, net.minecraft.world.level.block.Blocks.PURPUR_PILLAR,
         net.minecraft.world.level.block.Blocks.PURPUR_STAIRS, net.minecraft.world.level.block.Blocks.END_STONE_BRICKS,
@@ -446,30 +461,24 @@ public final class MapModule extends Module {
                 && K.sum(net.minecraft.world.level.block.Blocks.DEEPSLATE_TILES, net.minecraft.world.level.block.Blocks.DEEPSLATE_BRICKS) >= 60
                 && K.sum(net.minecraft.world.level.block.Blocks.SCULK_SHRIEKER, net.minecraft.world.level.block.Blocks.SCULK_SENSOR, net.minecraft.world.level.block.Blocks.SOUL_LANTERN) >= 2)
                 structure(Structure.AncientCity, area, net.minecraft.world.level.block.Blocks.REINFORCED_DEEPSLATE);
-            // Stronghold: end portal frames (can't be obtained in survival) inside a lot of stone bricks
-            if (n.applyAsInt(net.minecraft.world.level.block.Blocks.END_PORTAL_FRAME) >= 4
-                && K.sum(net.minecraft.world.level.block.Blocks.STONE_BRICKS, net.minecraft.world.level.block.Blocks.MOSSY_STONE_BRICKS,
-                    net.minecraft.world.level.block.Blocks.CRACKED_STONE_BRICKS) >= 80)
-                structure(Structure.Stronghold, area, net.minecraft.world.level.block.Blocks.END_PORTAL_FRAME);
-            // Ocean monument: a mass of prismarine bricks / dark prismarine with sea lanterns, under sea level
+            // Stronghold: the portal room's ring of 12 frames (frames can't be mined or obtained in survival)
+            if (n.applyAsInt(net.minecraft.world.level.block.Blocks.END_PORTAL_FRAME) >= 12)
+                verified(Structure.Stronghold, cx, cz, () -> dev.erebus.client.map.StructureVerifier.strongholdPortal(cx, cz));
+            // Ocean monument: lots of prismarine with sea lanterns, then the monument's exact height range and footprint
             if (K.sum(net.minecraft.world.level.block.Blocks.PRISMARINE_BRICKS, net.minecraft.world.level.block.Blocks.DARK_PRISMARINE) >= 150
-                && n.applyAsInt(net.minecraft.world.level.block.Blocks.SEA_LANTERN) >= 4 && lowY.applyAsInt(net.minecraft.world.level.block.Blocks.PRISMARINE_BRICKS) < 62)
-                structure(Structure.OceanMonument, area, net.minecraft.world.level.block.Blocks.PRISMARINE_BRICKS, net.minecraft.world.level.block.Blocks.DARK_PRISMARINE);
-            // Desert pyramid: the 9-TNT trap with its pressure plate, inside chiseled/cut sandstone
-            if (n.applyAsInt(net.minecraft.world.level.block.Blocks.TNT) >= 8 && n.applyAsInt(net.minecraft.world.level.block.Blocks.STONE_PRESSURE_PLATE) >= 1
-                && K.sum(net.minecraft.world.level.block.Blocks.CHISELED_SANDSTONE, net.minecraft.world.level.block.Blocks.CUT_SANDSTONE) >= 20)
-                structure(Structure.DesertPyramid, area, net.minecraft.world.level.block.Blocks.TNT);
-            // Jungle temple: mossy cobblestone + chiseled stone bricks + the trap (tripwire hooks) + the lever puzzle (sticky pistons, levers)
-            if (n.applyAsInt(net.minecraft.world.level.block.Blocks.MOSSY_COBBLESTONE) >= 40 && n.applyAsInt(net.minecraft.world.level.block.Blocks.CHISELED_STONE_BRICKS) >= 2
-                && n.applyAsInt(net.minecraft.world.level.block.Blocks.TRIPWIRE_HOOK) >= 2 && n.applyAsInt(net.minecraft.world.level.block.Blocks.STICKY_PISTON) >= 2
-                && n.applyAsInt(net.minecraft.world.level.block.Blocks.LEVER) >= 2)
-                structure(Structure.JungleTemple, area, net.minecraft.world.level.block.Blocks.STICKY_PISTON, net.minecraft.world.level.block.Blocks.TRIPWIRE_HOOK);
-            // Ruined portal: crying obsidian in a broken obsidian frame, with netherrack and magma/gold blocks around it
-            if (n.applyAsInt(net.minecraft.world.level.block.Blocks.CRYING_OBSIDIAN) >= 1 && n.applyAsInt(net.minecraft.world.level.block.Blocks.OBSIDIAN) >= 4
-                && (n.applyAsInt(net.minecraft.world.level.block.Blocks.NETHERRACK) >= 12
-                    || n.applyAsInt(net.minecraft.world.level.block.Blocks.NETHERRACK) >= 4
-                       && K.sum(net.minecraft.world.level.block.Blocks.MAGMA_BLOCK, net.minecraft.world.level.block.Blocks.GOLD_BLOCK) >= 1))
-                structure(Structure.RuinedPortal, area, net.minecraft.world.level.block.Blocks.CRYING_OBSIDIAN, net.minecraft.world.level.block.Blocks.OBSIDIAN);
+                && n.applyAsInt(net.minecraft.world.level.block.Blocks.SEA_LANTERN) >= 4)
+                verified(Structure.OceanMonument, cx, cz, () -> dev.erebus.client.map.StructureVerifier.monument(cx, cz));
+            // Desert pyramid, jungle temple, swamp hut: their marker blocks at the exact spot in their start chunk
+            if (n.applyAsInt(net.minecraft.world.level.block.Blocks.BLUE_TERRACOTTA) >= 1)
+                verified(Structure.DesertPyramid, cx, cz, () -> dev.erebus.client.map.StructureVerifier.desertPyramid(cx, cz));
+            if (n.applyAsInt(net.minecraft.world.level.block.Blocks.STICKY_PISTON) >= 3)
+                verified(Structure.JungleTemple, cx, cz, () -> dev.erebus.client.map.StructureVerifier.jungleTemple(cx, cz));
+            if (n.applyAsInt(net.minecraft.world.level.block.Blocks.CAULDRON) >= 1)
+                verified(Structure.SwampHut, cx, cz, () -> dev.erebus.client.map.StructureVerifier.swampHut(cx, cz));
+            // Ruined portal: obsidian with netherrack or crying obsidian, then a match with one of its templates
+            if (K.sum(net.minecraft.world.level.block.Blocks.OBSIDIAN, net.minecraft.world.level.block.Blocks.CRYING_OBSIDIAN) >= 3
+                && (n.applyAsInt(net.minecraft.world.level.block.Blocks.NETHERRACK) >= 3 || n.applyAsInt(net.minecraft.world.level.block.Blocks.CRYING_OBSIDIAN) >= 1))
+                verified(Structure.RuinedPortal, cx, cz, () -> dev.erebus.client.map.StructureVerifier.ruinedPortal(cx, cz));
             // Geode: budding amethyst inside amethyst, calcite and smooth basalt shells
             if (n.applyAsInt(net.minecraft.world.level.block.Blocks.BUDDING_AMETHYST) >= 2 && n.applyAsInt(net.minecraft.world.level.block.Blocks.AMETHYST_BLOCK) >= 20
                 && n.applyAsInt(net.minecraft.world.level.block.Blocks.CALCITE) >= 30 && n.applyAsInt(net.minecraft.world.level.block.Blocks.SMOOTH_BASALT) >= 30)
@@ -481,29 +490,48 @@ public final class MapModule extends Module {
         if (nether) {
             boolean bastion = n.applyAsInt(net.minecraft.world.level.block.Blocks.GILDED_BLACKSTONE) >= 2
                 && n.applyAsInt(net.minecraft.world.level.block.Blocks.POLISHED_BLACKSTONE_BRICKS) >= 100;
-            // Nether fortress: a lot of nether bricks with fences and stairs
-            if (n.applyAsInt(net.minecraft.world.level.block.Blocks.NETHER_BRICKS) >= 250 && n.applyAsInt(net.minecraft.world.level.block.Blocks.NETHER_BRICK_FENCE) >= 8
-                && n.applyAsInt(net.minecraft.world.level.block.Blocks.NETHER_BRICK_STAIRS) >= 4)
-                structure(Structure.NetherFortress, area, net.minecraft.world.level.block.Blocks.NETHER_BRICK_FENCE, net.minecraft.world.level.block.Blocks.NETHER_BRICKS);
-            // Bastion: gilded blackstone inside a mass of polished blackstone bricks (and chains)
-            if (bastion && n.applyAsInt(net.minecraft.world.level.block.Blocks.IRON_CHAIN) >= 1)
-                structure(Structure.Bastion, area, net.minecraft.world.level.block.Blocks.GILDED_BLACKSTONE, net.minecraft.world.level.block.Blocks.POLISHED_BLACKSTONE_BRICKS);
-            // Ruined portal (Nether version): crying obsidian in an obsidian frame with gold blocks, not part of a bastion
-            if (!bastion && n.applyAsInt(net.minecraft.world.level.block.Blocks.CRYING_OBSIDIAN) >= 1 && n.applyAsInt(net.minecraft.world.level.block.Blocks.OBSIDIAN) >= 4
-                && (n.applyAsInt(net.minecraft.world.level.block.Blocks.GOLD_BLOCK) >= 1 || n.applyAsInt(net.minecraft.world.level.block.Blocks.CRYING_OBSIDIAN) >= 2)
-                && n.applyAsInt(net.minecraft.world.level.block.Blocks.POLISHED_BLACKSTONE_BRICKS) < 20)
-                structure(Structure.RuinedPortal, area, net.minecraft.world.level.block.Blocks.CRYING_OBSIDIAN, net.minecraft.world.level.block.Blocks.OBSIDIAN);
+            // Nether fortress: lots of nether bricks (or its spawner), then the blaze spawner or a stretch of its bridge
+            if ((n.applyAsInt(net.minecraft.world.level.block.Blocks.NETHER_BRICKS) >= 250 && n.applyAsInt(net.minecraft.world.level.block.Blocks.NETHER_BRICK_FENCE) >= 8
+                    && n.applyAsInt(net.minecraft.world.level.block.Blocks.NETHER_BRICK_STAIRS) >= 4)
+                || (n.applyAsInt(net.minecraft.world.level.block.Blocks.SPAWNER) >= 1 && n.applyAsInt(net.minecraft.world.level.block.Blocks.NETHER_BRICKS) >= 40))
+                verified(Structure.NetherFortress, cx, cz, () -> dev.erebus.client.map.StructureVerifier.fortress(cx, cz));
+            // Bastion: gilded blackstone among polished blackstone bricks, then a match with one of its templates
+            if (bastion)
+                verified(Structure.Bastion, cx, cz, () -> dev.erebus.client.map.StructureVerifier.bastion(cx, cz));
+            // Ruined portal (Nether version): obsidian, then a match with one of its templates
+            if (!bastion && K.sum(net.minecraft.world.level.block.Blocks.OBSIDIAN, net.minecraft.world.level.block.Blocks.CRYING_OBSIDIAN) >= 3)
+                verified(Structure.RuinedPortal, cx, cz, () -> dev.erebus.client.map.StructureVerifier.ruinedPortal(cx, cz));
         }
         if (end) {
             // End city: a lot of purpur with end stone bricks and end rods
-            if (K.sum(net.minecraft.world.level.block.Blocks.PURPUR_BLOCK, net.minecraft.world.level.block.Blocks.PURPUR_PILLAR) >= 250
-                && n.applyAsInt(net.minecraft.world.level.block.Blocks.PURPUR_STAIRS) >= 8 && n.applyAsInt(net.minecraft.world.level.block.Blocks.END_STONE_BRICKS) >= 20
+            if (K.sum(net.minecraft.world.level.block.Blocks.PURPUR_BLOCK, net.minecraft.world.level.block.Blocks.PURPUR_PILLAR) >= 60
+                && n.applyAsInt(net.minecraft.world.level.block.Blocks.PURPUR_STAIRS) >= 4
                 && n.applyAsInt(net.minecraft.world.level.block.Blocks.END_ROD) >= 2)
-                structure(Structure.EndCity, area, net.minecraft.world.level.block.Blocks.PURPUR_BLOCK, net.minecraft.world.level.block.Blocks.PURPUR_PILLAR);
+                verified(Structure.EndCity, cx, cz, () -> dev.erebus.client.map.StructureVerifier.endCity(cx, cz));
             // End gateway: the gateway block held in bedrock
             if (n.applyAsInt(net.minecraft.world.level.block.Blocks.END_GATEWAY) >= 1 && n.applyAsInt(net.minecraft.world.level.block.Blocks.BEDROCK) >= 2)
                 structure(Structure.EndGateway, area, net.minecraft.world.level.block.Blocks.END_GATEWAY);
         }
+    }
+
+    private final Map<String, Long> verifyTried = new HashMap<>();
+
+    /**
+     * A structure the block counts point to, confirmed by {@code check} (its exact layout) before it's marked. A failed
+     * check for an area is retried at most every 20 seconds, as more of it loads.
+     */
+    private void verified(Structure st, int cx, int cz, java.util.function.Supplier<net.minecraft.core.BlockPos> check) {
+        if (!findStruct.get(st).get()) return;
+        int ax = (cx << 4) + 8, az = (cz << 4) + 8;
+        if (MapStore.hasStructure(st.title, ax, az, st.radius + 24)) return;
+        String key = st.name() + ":" + cx + "," + cz;
+        long now = System.currentTimeMillis();
+        Long last = verifyTried.get(key);
+        if (last != null && now - last < 20_000) return;
+        verifyTried.put(key, now);
+        if (verifyTried.size() > 5000) verifyTried.clear();
+        net.minecraft.core.BlockPos p = check.get();
+        if (p != null) record(st, p.getX(), p.getY(), p.getZ());
     }
 
     /** Records a structure at the middle of the blocks that gave it away. */
@@ -520,7 +548,10 @@ public final class MapModule extends Module {
             y = Math.min(y, f[3]);
         }
         if (n == 0) return;
-        int x = (int) (sx / n), z = (int) (sz / n);
+        record(st, (int) (sx / n), y, (int) (sz / n));
+    }
+
+    private void record(Structure st, int x, int y, int z) {
         MapStore.Mark mark = new MapStore.Mark(x, y, z, "structure", st.title, st.color);
         if (!MapStore.addStructure(mark, st.radius)) return;
         if (announce.get()) {
