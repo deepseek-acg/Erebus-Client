@@ -7,6 +7,6 @@ Erebus for Minecraft **1.21.11** (Fabric).
 - **HUD** with a drag-and-drop editor: watermark, module list, coordinates, server info, nearby players, supplies, armor, notifications, minimap, finder legend.
 - **World map** (M) recorded as you play, with waypoints, structure detection and base/stash markers.
 - **Basefinding:** Stash ESP, Player Blocks, Old Chunks, Logout Spots.
-- **Combat:** Auto Safe Anchor, Anchor Aura and Auto Crystal. All three work only through simulated mouse and key input (hotbar keys, mouse movement, use and attack keys), never crafted packets, and share the hands through one lock so they never click at the same time.
+- **Combat:** Auto Safe Anchor, Anchor Aura and Crystal Aura. All three work only through simulated mouse and key input (hotbar keys, mouse movement, use and attack keys), never crafted packets, and share the hands through one lock so they never click at the same time.
 
 See the README for every module and setting.

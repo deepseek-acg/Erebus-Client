@@ -68,6 +68,13 @@ public final class AnchorAura extends AnchorSequence {
     private final NumberSetting rearmRandom;
     private final NumberSetting spotCooldown;
     private final NumberSetting searchInterval;
+    private final NumberSetting restoreAfter;
+    private final BoolSetting stickToSpot;
+    private final NumberSetting keepAbove;
+    private final NumberSetting switchGain;
+    private final NumberSetting maxAngle;
+    private BlockPos lastSpot;
+    private int idleTicks;
     private final KeybindSetting holdKey;
     // variation
     private final NumberSetting varyChance;
@@ -107,15 +114,27 @@ public final class AnchorAura extends AnchorSequence {
                 .visibleWhen(() -> facePlaceHealth.get() > 0));
 
         group("Pacing");
-        rearmDelay = add(new NumberSetting("Re-arm delay", "Ticks between one anchor and the next.", 2, 0, 40, 1));
-        rearmRandom = add(new NumberSetting("Re-arm random", "Up to this many extra ticks on the re-arm delay.", 1, 0, 20, 1));
-        spotCooldown = add(new NumberSetting("Spot cooldown", "Seconds before a spot that was just used is used again.", 8, 0, 30, 0.5));
+        rearmDelay = add(new NumberSetting("Re-arm delay", "Ticks between one anchor and the next.", 0, 0, 40, 1));
+        rearmRandom = add(new NumberSetting("Re-arm random", "Up to this many extra ticks on the re-arm delay.", 0, 0, 20, 1));
+        spotCooldown = add(new NumberSetting("Spot cooldown", "Seconds before a spot that was just used is used again. 0 lets it keep using the same spot.", 0, 0, 30, 0.5));
         searchInterval = add(new NumberSetting("Search interval", "Ticks between looking for a spot while idle. Higher is lighter on your frame rate.", 1, 1, 10, 1));
+        restoreAfter = add(new NumberSetting("Restore after", "Ticks with no new anchor before swapping back and looking back (as set below), "
+                + "so it doesn't flick between anchors.", 10, 0, 60, 1));
         holdKey = add(new KeybindSetting("Only while holding", "If set, anchors only go down while this key is held. The module's own keybind "
                 + "still turns it on and off.", KeybindSetting.NONE));
 
+        group("Spot");
+        stickToSpot = add(new BoolSetting("Stick to spot", "Keep using the same spot instead of chasing the best one every anchor. "
+                + "Moves only when the spot does little damage, the opponent is far off from it, or another spot is much better.", true));
+        keepAbove = add(new NumberSetting("Keep above", "Move on when the spot would do less than this damage (half hearts).", 3, 0, 20, 0.5)
+                .visibleWhen(stickToSpot::get));
+        switchGain = add(new NumberSetting("Switch if better by", "Move to another spot only if it does at least this much more damage.", 4, 0, 20, 0.5)
+                .visibleWhen(stickToSpot::get));
+        maxAngle = add(new NumberSetting("Max angle", "Move on when the spot is more than this many degrees away from the opponent, as seen from you.",
+                40, 5, 120, 5).visibleWhen(stickToSpot::get));
+
         group("Variation");
-        varyChance = add(new NumberSetting("Vary spots", "Chance to take a different spot that's nearly as good, so cycles don't all look the same.", 0.15, 0, 1, 0.05));
+        varyChance = add(new NumberSetting("Vary spots", "Chance to take a different spot that's nearly as good, so cycles don't all look the same.", 0, 0, 1, 0.05));
         varyWindow = add(new NumberSetting("Vary within", "How much less damage (half hearts) a varied spot may do than the best.", 1.5, 0.5, 6, 0.5)
                 .visibleWhen(() -> varyChance.get() > 0));
 
@@ -127,6 +146,8 @@ public final class AnchorAura extends AnchorSequence {
         super.onEnable();
         target = null;
         rearm = 0;
+        lastSpot = null;
+        idleTicks = 0;
         searchWait = 0;
         cooldowns.clear();
     }
@@ -134,6 +155,7 @@ public final class AnchorAura extends AnchorSequence {
     @Override
     protected void onDisable() {
         super.onDisable();
+        restoreView(); // swap back / look back now rather than after the idle wait
         target = null;
         info = null;
     }
@@ -144,7 +166,15 @@ public final class AnchorAura extends AnchorSequence {
     }
 
     @Override
+    protected boolean deferRestore() {
+        return true;
+    }
+
+    @Override
     protected void onSequenceEnd(boolean completed) {
+        idleTicks = 0;
+        if (completed) lastSpot = anchorPos;
+        else if (anchorPos != null && anchorPos.equals(lastSpot)) lastSpot = null;
         rearm = rearmDelay.intValue() + (rearmRandom.intValue() > 0 ? ThreadLocalRandom.current().nextInt(rearmRandom.intValue() + 1) : 0);
         if (!completed) rearm = Math.max(rearm, 10); // something got in the way: give the world a moment to change
     }
@@ -156,6 +186,7 @@ public final class AnchorAura extends AnchorSequence {
 
     @Override
     protected void idleTick() {
+        if (++idleTicks >= restoreAfter.intValue() && restorePending()) restoreView();
         if (rearm > 0) {
             rearm--;
             return;
@@ -280,11 +311,28 @@ public final class AnchorAura extends AnchorSequence {
         }
         if (clickable.isEmpty()) return null;
         Spot best = clickable.get(0);
+        if (stickToSpot.get() && lastSpot != null) { // keep hitting the same spot unless it's clearly not working
+            for (Spot s : spots) {
+                if (!s.pos().equals(lastSpot)) continue;
+                boolean weak = s.dealt() < keepAbove.floatValue() && s.score() < 100;
+                boolean farOff = angleBetween(Vec3.atCenterOf(s.pos()), opponent.getBoundingBox().getCenter()) > maxAngle.get();
+                boolean muchBetter = best.dealt() - s.dealt() >= switchGain.floatValue() || (best.score() >= 100 && s.score() < 100);
+                if (!weak && !farOff && !muchBetter && (clickable.contains(s) || reachable(s.pos()))) return s;
+                break;
+            }
+        }
         if (clickable.size() > 1 && varyChance.get() > 0 && ThreadLocalRandom.current().nextDouble() < varyChance.get()) {
             List<Spot> near = clickable.stream().filter(s -> best.dealt() - s.dealt() <= varyWindow.get()).toList();
             if (near.size() > 1) return near.get(ThreadLocalRandom.current().nextInt(near.size()));
         }
         return best;
+    }
+
+    /** Degrees between two points as seen from the eyes. */
+    static double angleBetween(Vec3 a, Vec3 b) {
+        Vec3 eye = mc.player.getEyePosition();
+        Vec3 u = a.subtract(eye).normalize(), v = b.subtract(eye).normalize();
+        return Math.toDegrees(Math.acos(Math.max(-1, Math.min(1, u.dot(v)))));
     }
 
     /** Whether the crosshair can be turned onto something that places an anchor at {@code pos}. */

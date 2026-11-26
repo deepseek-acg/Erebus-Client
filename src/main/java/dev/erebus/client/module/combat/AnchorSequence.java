@@ -155,6 +155,7 @@ public abstract class AnchorSequence extends Module {
     private int swapTick = -100;
     private int chargeAttempts;
     private int detonateAttempts;
+    private int detonateTick;
     private int placeChecks;
     private boolean chargeClicked;
     private BlockPos chargeFacePos;
@@ -167,6 +168,7 @@ public abstract class AnchorSequence extends Module {
 
     // ---- input state ----
     private int originalSlot = -1;
+    private boolean restorePending;
     private float startYaw;
     private float startPitch;
     private float lastYaw = Float.NaN;
@@ -184,28 +186,29 @@ public abstract class AnchorSequence extends Module {
     protected final void addSequenceSettings() {
         group("Timing");
         startDelay = add(new NumberSetting("Start delay", "Ticks to wait before the first action.", 0, 0, 20, 1));
-        placeDelay = add(new NumberSetting("Place delay", "Ticks to wait after placing the anchor.", 1, 0, 20, 1));
-        chargeDelay = add(new NumberSetting("Charge delay", "Ticks to wait after charging it.", 1, 0, 20, 1));
-        shieldDelay = add(new NumberSetting("Shield delay", "Ticks to wait after the shield is down, before detonating.", 1, 0, 20, 1));
+        placeDelay = add(new NumberSetting("Place delay", "Ticks to wait after placing the anchor.", 0, 0, 20, 1));
+        chargeDelay = add(new NumberSetting("Charge delay", "Ticks to wait after charging it.", 0, 0, 20, 1));
+        shieldDelay = add(new NumberSetting("Shield delay", "Ticks to wait after the shield is down, before detonating.", 0, 0, 20, 1));
         noShieldDelay = add(new NumberSetting("No-shield delay", "Ticks to wait before detonating when no shield is placed.", 0, 0, 20, 1));
-        swapDelay = add(new NumberSetting("Swap delay", "Ticks between switching hotbar slot and clicking. 0 clicks in the same tick as the switch.", 1, 0, 10, 1));
+        swapDelay = add(new NumberSetting("Swap delay", "Ticks between switching hotbar slot and clicking. 0 clicks in the same tick as the switch.", 0, 0, 10, 1));
         settleTicks = add(new NumberSetting("Settle time", "Ticks the camera must be still before a click, so the server already has the view. "
                 + "1 is the minimum that guarantees it.", 1, 1, 10, 1));
         sneakDelay = add(new NumberSetting("Crouch delay", "Ticks crouched before a crouch-place click.", 1, 1, 10, 1));
         standDelay = add(new NumberSetting("Stand delay", "Ticks standing up before charging or detonating (a crouched click wouldn't use the anchor).", 1, 1, 10, 1));
-        randomExtra = add(new NumberSetting("Random extra", "Up to this many extra ticks on each delay.", 1, 0, 10, 1));
+        randomExtra = add(new NumberSetting("Random extra", "Up to this many extra ticks on each delay.", 0, 0, 10, 1));
         randomMode = add(new ModeSetting("Random spread", "Uniform: any amount up to the maximum equally. Gaussian: usually about half, sometimes more or less.",
                 "Uniform", "Uniform", "Gaussian").visibleWhen(() -> randomExtra.intValue() > 0));
-        verifyDelay = add(new NumberSetting("Detonate check", "Ticks after detonating before checking it went off (and trying again).", 4, 2, 20, 1));
+        verifyDelay = add(new NumberSetting("Detonate retry", "Ticks to wait for the blast after a detonate click before clicking again. "
+                + "The sequence ends as soon as the anchor is gone.", 5, 2, 20, 1));
         chargeRetries = add(new NumberSetting("Charge attempts", "How many times to try charging before giving up.", 3, 1, 6, 1));
         detonateRetries = add(new NumberSetting("Detonate attempts", "How many detonate clicks before giving up.", 3, 1, 6, 1));
         timeout = add(new NumberSetting("Timeout", "Give up if a sequence takes longer than this many ticks.", 80, 20, 200, 5));
 
         group("Camera");
-        aimSpeed = add(new NumberSetting("Max speed", "Fastest the camera turns, in degrees per second.", 900, 120, 2400, 30));
-        minSpeed = add(new NumberSetting("Min speed", "Slowest it turns near the end of a turn, so the last few degrees don't crawl.", 25, 5, 200, 5));
-        easing = add(new NumberSetting("Easing", "How quickly a turn closes in. Higher snaps, lower glides.", 14, 2, 40, 1));
-        curve = add(new NumberSetting("Curve", "How much the path bows sideways instead of a straight line, like a hand moving a mouse.", 0.15, 0, 0.6, 0.05));
+        aimSpeed = add(new NumberSetting("Max speed", "Fastest the camera turns, in degrees per second.", 1500, 120, 3000, 30));
+        minSpeed = add(new NumberSetting("Min speed", "Slowest it turns near the end of a turn, so the last few degrees don't crawl.", 150, 5, 400, 5));
+        easing = add(new NumberSetting("Easing", "How quickly a turn closes in. Higher snaps, lower glides.", 26, 2, 50, 1));
+        curve = add(new NumberSetting("Curve", "How much the path bows sideways instead of a straight line, like a hand moving a mouse.", 0.08, 0, 0.6, 0.05));
         overshootChance = add(new NumberSetting("Overshoot chance", "Chance a larger turn goes a little past the target and comes back.", 0, 0, 1, 0.05));
         overshootAmount = add(new NumberSetting("Overshoot amount", "How far past the target an overshoot goes, in degrees.", 1.5, 0.5, 8, 0.5)
                 .visibleWhen(() -> overshootChance.get() > 0));
@@ -277,6 +280,7 @@ public abstract class AnchorSequence extends Module {
 
     @Override
     protected void onEnable() {
+        restorePending = false;
         stillTicks = 0;
         lastYaw = Float.NaN;
         stage = null;
@@ -391,9 +395,12 @@ public abstract class AnchorSequence extends Module {
             abort(why);
             return false;
         }
-        originalSlot = InputSim.selectedSlot();
-        startYaw = mc.player.getYRot();
-        startPitch = mc.player.getXRot();
+        if (!restorePending) { // in a streak of sequences, keep what the player had before the first one
+            originalSlot = InputSim.selectedSlot();
+            startYaw = mc.player.getYRot();
+            startPitch = mc.player.getXRot();
+        }
+        restorePending = false;
         anchorPos = anchor;
         lookHit = look;
         if (startedByPlayer()) InputLock.take(this);
@@ -564,7 +571,8 @@ public abstract class AnchorSequence extends Module {
                         case CLICKED -> {
                             detonateAttempts++;
                             stage = Stage.VERIFY; // the anchor only disappears once the explosion reaches us
-                            wait = Math.max(2, verifyDelay.intValue() + ThreadLocalRandom.current().nextInt(3) - 1);
+                            detonateTick = ticksRunning;
+                            wait = 1;
                         }
                     }
                 }
@@ -572,6 +580,10 @@ public abstract class AnchorSequence extends Module {
                     BlockState state = mc.level.getBlockState(anchorPos);
                     if (!state.is(Blocks.RESPAWN_ANCHOR)) { // it went off
                         finish();
+                        return;
+                    }
+                    if (ticksRunning - detonateTick < verifyDelay.intValue()) { // checked every tick, retried only after a while
+                        wait = 1;
                         return;
                     }
                     if (detonateAttempts >= detonateRetries.intValue()) {
@@ -855,6 +867,34 @@ public abstract class AnchorSequence extends Module {
         else onSequenceEnd(false);
     }
 
+    /**
+     * Whether swapping back and looking back should wait instead of happening as soon as a sequence ends; the
+     * subclass then calls {@link #restoreView()} once it's done (Anchor Aura: when no new anchor follows).
+     */
+    protected boolean deferRestore() {
+        return false;
+    }
+
+    /** Whether a swap back / look back is still owed from the last sequence. */
+    protected final boolean restorePending() {
+        return restorePending;
+    }
+
+    /** Swaps back to the player's slot and turns back to their view, as the settings say. */
+    protected final void restoreView() {
+        if (!restorePending || mc.player == null) return;
+        restorePending = false;
+        if (InputLock.heldByOther(this)) return;
+        if (swapBack.get() && originalSlot >= 0) InputSim.selectSlot(originalSlot);
+        if (lookBack.get()) {
+            MouseSim.Profile p = profile();
+            MouseSim.returnTo(startYaw, startPitch, new MouseSim.Profile(lookBackSpeed.floatValue(), p.minSpeed(), p.ease(), p.curve(), 0, 0, 1e9f),
+                    lookBackDelay.intValue() / 20.0);
+        } else {
+            MouseSim.stop();
+        }
+    }
+
     /** Whether sequences are started by the player (and may take the input over from an automatic module). */
     protected boolean startedByPlayer() {
         return false;
@@ -862,6 +902,7 @@ public abstract class AnchorSequence extends Module {
 
     /** Ends the sequence without touching the slot or camera, which another module is now driving. */
     private void dropSequence() {
+        restorePending = false;
         releaseSneak();
         forcedStand = false;
         pendingShield = null;
@@ -879,12 +920,13 @@ public abstract class AnchorSequence extends Module {
         releaseSneak();
         if (forcedStand && mc.player != null && InputSim.sneakHeldPhysically()) InputSim.sneak(true);
         forcedStand = false;
-        if (swapBack.get() && originalSlot >= 0) InputSim.selectSlot(originalSlot);
         boolean ran = stage != null;
-        if (lookBack.get() && mc.player != null && ran) {
-            MouseSim.Profile p = profile();
-            MouseSim.returnTo(startYaw, startPitch, new MouseSim.Profile(lookBackSpeed.floatValue(), p.minSpeed(), p.ease(), p.curve(), 0, 0, 1e9f),
-                    lookBackDelay.intValue() / 20.0);
+        if (deferRestore() && ran) {
+            restorePending = true; // the subclass restores once no new sequence follows
+            MouseSim.stop();
+        } else if (ran) {
+            restorePending = true;
+            restoreView();
         } else {
             MouseSim.stop();
         }

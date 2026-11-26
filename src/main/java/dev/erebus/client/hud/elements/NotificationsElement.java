@@ -38,7 +38,7 @@ public final class NotificationsElement extends HudElement {
         int count = entries.size();
         if (count == 0) {
             if (!preview) return new int[]{0, 0};
-            maxWidth = toastWidth(ui, "AutoCrystal", "enabled");
+            maxWidth = toastWidth(ui, "Crystal Aura", "enabled");
             return new int[]{maxWidth, TOAST_H};
         }
         for (Notifications.Entry e : entries) maxWidth = Math.max(maxWidth, toastWidth(ui, e.title, e.detail));
@@ -52,7 +52,7 @@ public final class NotificationsElement extends HudElement {
     @Override
     protected void draw(Ui ui, int x, int y, boolean preview) {
         if (entries.isEmpty()) {
-            toast(ui, x, y, maxWidth, "AutoCrystal", "enabled", Notifications.Kind.ENABLED, 1f);
+            toast(ui, x, y, maxWidth, "Crystal Aura", "enabled", Notifications.Kind.ENABLED, 1f);
             return;
         }
         boolean up = growUp();

@@ -61,15 +61,17 @@ import java.util.stream.Collectors;
  * movement, the use key to place and the attack key to break, each only once the game's own crosshair raycast is
  * on the right block face or crystal and the camera has been still long enough for the server to have the view.
  *
- * <p>Compared with Mist it places far less obsidian: an existing obsidian or bedrock base always wins unless a new
- * block would do clearly more damage, a new block is only placed if the opponent will still be in reach of it by
- * the time the crystal goes down (their movement is extrapolated), obsidian it placed earlier is reused first,
- * and there's a per-window cap. It also gets in the way less: it can keep your sword in hand when crystals are in
- * the offhand, swaps back and looks back only once a fight pauses rather than after every crystal, skips spots that
- * need a big camera turn, pauses while you use an item, hold the use key or flick the mouse, and can require a
- * weapon in hand so it never fires while you're building.
+ * <p>It locks onto one spot and keeps placing and breaking crystals there. The view that places a crystal on the
+ * top of a block also hits the crystal standing on it, so once the camera is on the spot every place and every
+ * break goes out without turning at all: a crystal per round trip to the server. It only moves to another spot
+ * when the current one genuinely stops working (little damage, the opponent far off from it, unsafe, out of reach)
+ * or another spot is much better, instead of chasing the best spot as the opponent moves around above it.
+ *
+ * <p>Obsidian is placed sparingly: an existing base wins unless a new block does clearly more damage, a new block
+ * must still pay off where the opponent will be by the time the crystal is down, there's a per-window cap, and
+ * since the aura sticks to a spot, one block serves many crystals.
  */
-public final class AutoCrystal extends Module {
+public final class CrystalAura extends Module {
     // activation
     private final ModeSetting activation;
     private final KeybindSetting holdKey;
@@ -87,6 +89,12 @@ public final class AutoCrystal extends Module {
     private final BoolSetting ignoreNaked;
     private final TextSetting ignoreNames;
     private final BoolSetting targetMobs;
+    // spot
+    private final BoolSetting stickToSpot;
+    private final NumberSetting keepAbove;
+    private final NumberSetting switchGain;
+    private final NumberSetting maxAngle;
+    private final NumberSetting recheckInterval;
     // damage
     private final NumberSetting minDamage;
     private final NumberSetting maxSelfDamage;
@@ -108,15 +116,14 @@ public final class AutoCrystal extends Module {
     private final BoolSetting antiWeakness;
     private final NumberSetting breakAttempts;
     // timing
-    private final NumberSetting obsidianDelay;
     private final NumberSetting placeDelay;
     private final NumberSetting breakDelay;
-    private final NumberSetting cycleDelay;
+    private final NumberSetting obsidianDelay;
     private final NumberSetting swapDelay;
     private final NumberSetting settleTicks;
+    private final NumberSetting retryTicks;
     private final NumberSetting randomExtra;
     private final ModeSetting randomMode;
-    private final NumberSetting timeout;
     private final NumberSetting searchInterval;
     // camera
     private final NumberSetting maxTurn;
@@ -141,40 +148,49 @@ public final class AutoCrystal extends Module {
     private final ColorSetting baseColor;
     private final ColorSetting obsidianColor;
 
-    private enum Stage { IDLE, OBSIDIAN, CRYSTAL, BREAK }
+    private enum Stage { IDLE, OBSIDIAN, SPAM }
 
     private enum Action { CLICKED, AIMING, REFUSED }
 
-    /** A place to put a crystal, or (with {@code crystal} set) one standing already that's worth breaking. */
+    /** A place to put crystals, or (with {@code crystal} set) one standing already that's worth breaking. */
     private record Spot(BlockPos base, boolean needsObsidian, EndCrystal crystal, float dealt, float taken, double score) {
     }
 
-    // ---- cycle ----
+    // ---- the locked spot ----
     private Stage stage = Stage.IDLE;
     private LivingEntity target;
     private BlockPos base;
-    private boolean placedObsidianHere;
     private int ticks;
     private int stageTicks;
-    private int cycleTicks;
     private int wait;
-    private int clickTick = -1;
-    private boolean clicked;
-    private boolean breakArmed;
-    private int breakClicks;
-    private int cooldown;
+    private boolean obsidianClicked;
+    private int obsidianClickTick;
+    private int nextRecheck;
+    private int pausedTicks;
+    private int blockedTicks;
+    // place/break loop
+    private int placeTick = -100;
+    private int placesUnanswered;
+    private int crystalSeenTick = -1;
+    private int crystalGoneTick = -100;
+    private int crystalId = -1;
+    private int hitsOnCrystal;
+    private int attackTick = -100;
+
+    // ---- idle ----
     private int idleTicks;
     private int searchWait;
     private int yieldTicks;
-    private BlockPos lastBase;
+    private int cooldown;
 
     // ---- memory ----
     private final Map<BlockPos, Integer> parked = new HashMap<>();
     private final Deque<Integer> obsidianTicks = new ArrayDeque<>();
-    private final Set<BlockPos> ownObsidian = new LinkedHashSet<>();
     private final Set<BlockPos> ownCrystals = new LinkedHashSet<>();
+    private BlockPos lastBase;
     private LivingEntity lastHit;
     private int lastHitTick = -10_000;
+    private LivingEntity pendingTarget;
     private static boolean hooked;
 
     // ---- input ----
@@ -190,9 +206,9 @@ public final class AutoCrystal extends Module {
     private Crosshair.Aim aim;
     private Object aimKey;
 
-    public AutoCrystal() {
-        super("Auto Crystal", "Places and breaks end crystals on nearby opponents, placing obsidian only when it's worth it. "
-                + "Simulated mouse and key input only.", Category.COMBAT);
+    public CrystalAura() {
+        super("Crystal Aura", "Places and breaks end crystals on nearby opponents, sticking to one spot and placing obsidian only when it's "
+                + "worth it. Simulated mouse and key input only.", Category.COMBAT);
         group("Activation");
         activation = add(new ModeSetting("Activation", "Always: whenever there's a good spot. After a hit: only for a moment after you hit "
                 + "someone with a weapon. Hold key: only while a key is held.", "Always", "Always", "After a hit", "Hold key"));
@@ -202,23 +218,35 @@ public final class AutoCrystal extends Module {
         requireWeapon = add(new BoolSetting("Require weapon", "Only run while you hold a sword, axe, mace, pickaxe, an end crystal or nothing, "
                 + "so it never fires while you build or eat.", true));
         pauseOnUse = add(new BoolSetting("Pause on use key", "Pause while you hold the use key yourself (placing, eating, blocking).", true));
-        yieldToMouse = add(new BoolSetting("Yield to mouse", "If you flick the mouse while it's turning, drop the crystal and give the camera back.", true));
-        yieldAmount = add(new NumberSetting("Yield above", "How far (degrees) you have to move the mouse within a moment for it to yield.", 20, 3, 90, 1)
+        yieldToMouse = add(new BoolSetting("Yield to mouse", "If you flick the mouse, let go of the spot and give the camera back for a moment.", true));
+        yieldAmount = add(new NumberSetting("Yield above", "How far (degrees) you have to move the mouse within a moment for it to yield.", 25, 3, 90, 1)
                 .visibleWhen(yieldToMouse::get));
-        yieldPause = add(new NumberSetting("Yield pause", "Ticks to stay out of the way after yielding.", 8, 0, 40, 1).visibleWhen(yieldToMouse::get));
+        yieldPause = add(new NumberSetting("Yield pause", "Ticks to stay out of the way after yielding.", 6, 0, 40, 1).visibleWhen(yieldToMouse::get));
 
         group("Targeting");
         targetRange = add(new NumberSetting("Target range", "How far away (blocks) an opponent can be.", 8, 2, 12, 0.5));
         placeRange = add(new NumberSetting("Place range", "How far from your eyes (blocks) a crystal can be placed. Vanilla reach is 4.5.", 4.5, 2, 5, 0.25));
         priority = add(new ModeSetting("Priority", "Which opponent to go for when there are several (someone you just hit always comes first).",
                 "Closest", "Closest", "Lowest health", "Most damage"));
-        predictTicks = add(new NumberSetting("Predict", "Ticks ahead to extrapolate a moving opponent, so crystals land where they'll be.", 2, 0, 6, 1));
+        predictTicks = add(new NumberSetting("Predict", "Ticks ahead to extrapolate a moving opponent when choosing a spot.", 2, 0, 6, 1));
         ignoreNaked = add(new BoolSetting("Ignore naked", "Skip players wearing no armor.", false));
         ignoreNames = add(new TextSetting("Ignore names", "Players never to target, separated by commas.", "", 256));
         targetMobs = add(new BoolSetting("Target mobs", "Also go for hostile mobs. Handy for trying settings out on a dummy.", false));
 
+        group("Spot");
+        stickToSpot = add(new BoolSetting("Stick to spot", "Keep placing and breaking at one spot, so the camera doesn't have to move between "
+                + "crystals. Off: go for the best spot every crystal.", true));
+        keepAbove = add(new NumberSetting("Keep above", "Move on when the spot would do less than this damage (half hearts).", 4, 0, 20, 0.5)
+                .visibleWhen(stickToSpot::get));
+        switchGain = add(new NumberSetting("Switch if better by", "Move to another spot only if it does at least this much more damage.", 5, 0, 20, 0.5)
+                .visibleWhen(stickToSpot::get));
+        maxAngle = add(new NumberSetting("Max angle", "Move on when the spot is more than this many degrees away from the opponent, as seen from you.",
+                45, 5, 120, 5).visibleWhen(stickToSpot::get));
+        recheckInterval = add(new NumberSetting("Recheck every", "Ticks between looking for a much better spot while it's on one.", 10, 1, 40, 1)
+                .visibleWhen(stickToSpot::get));
+
         group("Damage");
-        minDamage = add(new NumberSetting("Min damage", "Least damage (half hearts) a crystal must do to the opponent.", 6, 0, 36, 0.5));
+        minDamage = add(new NumberSetting("Min damage", "Least damage (half hearts) a new spot must do to the opponent.", 6, 0, 36, 0.5));
         maxSelfDamage = add(new NumberSetting("Max self damage", "Most damage (half hearts) a crystal may do to you.", 8, 0, 36, 0.5));
         selfWeight = add(new NumberSetting("Self damage weight", "How much your own damage counts against a spot when comparing them.", 0.5, 0, 2, 0.05));
         antiSuicide = add(new BoolSetting("Anti suicide", "Never place or break a crystal that could kill you.", true));
@@ -247,27 +275,28 @@ public final class AutoCrystal extends Module {
         breakMode = add(new ModeSetting("Break", "Own: only crystals it placed. Any: also crystals already standing near the opponent, "
                 + "if breaking them is worth it and safe.", "Any", "Own", "Any"));
         antiWeakness = add(new BoolSetting("Anti weakness", "With Weakness, switch to a sword or axe to break (a fist can't).", true));
-        breakAttempts = add(new NumberSetting("Break attempts", "How many hits on a crystal before giving up on it.", 2, 1, 5, 1));
+        breakAttempts = add(new NumberSetting("Break attempts", "How many hits on one crystal before giving up on the spot.", 3, 1, 6, 1));
 
         group("Timing");
-        obsidianDelay = add(new NumberSetting("Obsidian delay", "Ticks after the obsidian appears before placing the crystal.", 1, 0, 10, 1));
-        placeDelay = add(new NumberSetting("Place delay", "Ticks before placing a crystal on an existing base.", 0, 0, 10, 1));
-        breakDelay = add(new NumberSetting("Break delay", "Ticks after the crystal appears before breaking it.", 1, 0, 10, 1));
-        cycleDelay = add(new NumberSetting("Cycle delay", "Ticks between one crystal and the next.", 1, 0, 20, 1));
+        placeDelay = add(new NumberSetting("Place delay", "Ticks after a crystal is gone before placing the next one.", 0, 0, 10, 1));
+        breakDelay = add(new NumberSetting("Break delay", "Ticks after a crystal appears before breaking it.", 0, 0, 10, 1));
+        obsidianDelay = add(new NumberSetting("Obsidian delay", "Ticks after placing obsidian before the first crystal on it.", 0, 0, 10, 1));
         swapDelay = add(new NumberSetting("Swap delay", "Ticks between switching hotbar slot and clicking. 0 clicks in the same tick as the switch.", 0, 0, 5, 1));
-        settleTicks = add(new NumberSetting("Settle time", "Ticks the camera must be still before a click, so the server already has the view.", 1, 1, 5, 1));
-        randomExtra = add(new NumberSetting("Random extra", "Up to this many extra ticks on each delay.", 1, 0, 5, 1));
+        settleTicks = add(new NumberSetting("Settle time", "Ticks the camera must be still before a click after it turns, so the server already "
+                + "has the view. 1 is the minimum that guarantees it.", 1, 1, 5, 1));
+        retryTicks = add(new NumberSetting("Retry after", "Ticks to wait for the server to answer a place or break before clicking again. "
+                + "Raise it on a laggy connection.", 4, 2, 20, 1));
+        randomExtra = add(new NumberSetting("Random extra", "Up to this many extra ticks on each delay.", 0, 0, 5, 1));
         randomMode = add(new ModeSetting("Random spread", "Uniform: any amount up to the maximum equally. Gaussian: usually about half.",
                 "Uniform", "Uniform", "Gaussian").visibleWhen(() -> randomExtra.intValue() > 0));
-        timeout = add(new NumberSetting("Timeout", "Give up on a crystal that takes longer than this many ticks.", 30, 10, 100, 5));
         searchInterval = add(new NumberSetting("Search interval", "Ticks between looking for a spot while idle. Higher is lighter on your frame rate.", 1, 1, 10, 1));
 
         group("Camera");
-        maxTurn = add(new NumberSetting("Max turn", "Skip spots that need the camera to turn more than this (degrees) from where you look.", 75, 15, 180, 5));
-        aimSpeed = add(new NumberSetting("Max speed", "Fastest the camera turns, in degrees per second.", 1200, 120, 2400, 30));
-        minSpeed = add(new NumberSetting("Min speed", "Slowest it turns near the end of a turn.", 40, 5, 200, 5));
-        easing = add(new NumberSetting("Easing", "How quickly a turn closes in. Higher snaps, lower glides.", 18, 2, 40, 1));
-        curve = add(new NumberSetting("Curve", "How much the path bows sideways instead of a straight line.", 0.1, 0, 0.6, 0.05));
+        maxTurn = add(new NumberSetting("Max turn", "Skip new spots that need the camera to turn more than this (degrees) from where you look.", 75, 15, 180, 5));
+        aimSpeed = add(new NumberSetting("Max speed", "Fastest the camera turns, in degrees per second.", 1800, 120, 3000, 30));
+        minSpeed = add(new NumberSetting("Min speed", "Slowest it turns near the end of a turn, so the last degrees don't crawl.", 200, 5, 400, 5));
+        easing = add(new NumberSetting("Easing", "How quickly a turn closes in. Higher snaps, lower glides.", 30, 2, 50, 1));
+        curve = add(new NumberSetting("Curve", "How much the path bows sideways instead of a straight line.", 0.05, 0, 0.6, 0.05));
         overshootChance = add(new NumberSetting("Overshoot chance", "Chance a larger turn goes a little past the target and comes back.", 0, 0, 1, 0.05));
         overshootAmount = add(new NumberSetting("Overshoot amount", "How far past the target an overshoot goes, in degrees.", 1.5, 0.5, 8, 0.5)
                 .visibleWhen(() -> overshootChance.get() > 0));
@@ -283,7 +312,7 @@ public final class AutoCrystal extends Module {
         preferOffhand = add(new BoolSetting("Prefer offhand", "With crystals in your offhand, place them without switching away from your weapon.", true));
         swapBack = add(new BoolSetting("Swap back", "Go back to the hotbar slot you had once the fight pauses.", true));
         swapBackAfter = add(new NumberSetting("Swap back after", "Ticks with no crystal before swapping back, so it doesn't flick slots between "
-                + "every crystal.", 6, 0, 40, 1).visibleWhen(swapBack::get));
+                + "crystals.", 10, 0, 40, 1).visibleWhen(swapBack::get));
 
         group("Render");
         showTarget = add(new BoolSetting("Show target", "Outline the spot it's working on.", true));
@@ -315,6 +344,7 @@ public final class AutoCrystal extends Module {
         lookPending = false;
         lastYaw = Float.NaN;
         stillTicks = 0;
+        lastBase = null;
         parked.clear();
         lastHit = null;
     }
@@ -356,37 +386,31 @@ public final class AutoCrystal extends Module {
         ticks++;
         trackStillness();
         if (stage != Stage.IDLE && InputLock.lost(this)) { // the player triggered something that took the hands over
-            dropCycle();
+            dropLock();
             return;
         }
         if (stage == Stage.IDLE) {
             idle();
             return;
         }
-        if (yieldToMouse.get() && MouseSim.active() && !MouseSim.returning() && MouseSim.userMoved(yieldAmount.get(), 150)) {
+        if (yieldToMouse.get() && !MouseSim.returning() && MouseSim.userMoved(yieldAmount.get(), 150)) {
             yieldTicks = yieldPause.intValue();
-            MouseSim.stop();
-            endCycle(false);
+            if (MouseSim.active()) MouseSim.stop();
+            unlock(0);
             return;
         }
-        if (++cycleTicks > timeout.intValue()) {
-            giveUp(40);
+        if (mc.player.isDeadOrDying() || mc.screen != null || pauseReason() != null) { // eating, holding use...: hold the spot for a bit
+            if (++pausedTicks > 40) unlock(0);
             return;
         }
-        if (mc.player.isDeadOrDying() || mc.screen != null) return;
-        if (pauseReason() != null) return; // eating, holding use: hold the cycle where it is
+        pausedTicks = 0;
         stageTicks++;
         if (wait > 0) {
             wait--;
             return;
         }
-        switch (stage) {
-            case OBSIDIAN -> obsidianStage();
-            case CRYSTAL -> crystalStage();
-            case BREAK -> breakStage();
-            default -> {
-            }
-        }
+        if (stage == Stage.OBSIDIAN) obsidianStage();
+        else spam();
     }
 
     private void trackStillness() {
@@ -398,7 +422,7 @@ public final class AutoCrystal extends Module {
     }
 
     // =====================================================================================================
-    // Idle: restore the slot and view once the fight pauses, then look for the next crystal
+    // Idle: restore the slot and view once the fight pauses, then look for a spot
     // =====================================================================================================
 
     private void idle() {
@@ -442,7 +466,13 @@ public final class AutoCrystal extends Module {
         Spot spot = plan();
         if (spot == null) return;
         if (!InputLock.tryClaim(this)) return;
-        begin(spot);
+        if (originalSlot < 0) originalSlot = InputSim.selectedSlot();
+        if (!lookPending && !MouseSim.returning()) {
+            startYaw = mc.player.getYRot();
+            startPitch = mc.player.getXRot();
+        }
+        lookPending = true;
+        lockOn(spot);
     }
 
     /** Why it shouldn't act right now, or null. */
@@ -453,17 +483,15 @@ public final class AutoCrystal extends Module {
             ItemStack held = originalSlot >= 0 ? mc.player.getInventory().getItem(originalSlot) : mc.player.getMainHandItem();
             if (!holdingWeapon(held)) return "no weapon in hand";
         }
-        if (stage == Stage.IDLE) {
-            switch (activation.get()) {
-                case "Hold key" -> {
-                    int key = holdKey.get();
-                    if (key < 0 || !InputConstants.isKeyDown(mc.getWindow(), key)) return "waiting for key";
-                }
-                case "After a hit" -> {
-                    if (!knockup(lastHit)) return "waiting for a hit";
-                }
-                default -> {
-                }
+        switch (activation.get()) {
+            case "Hold key" -> {
+                int key = holdKey.get();
+                if (key < 0 || !InputConstants.isKeyDown(mc.getWindow(), key)) return "waiting for key";
+            }
+            case "After a hit" -> {
+                if (stage == Stage.IDLE && !knockup(lastHit)) return "waiting for a hit";
+            }
+            default -> {
             }
         }
         return null;
@@ -474,198 +502,50 @@ public final class AutoCrystal extends Module {
                 || s.is(Items.END_CRYSTAL) || s.is(Items.TOTEM_OF_UNDYING);
     }
 
-    private void begin(Spot spot) {
+    // =====================================================================================================
+    // The locked spot
+    // =====================================================================================================
+
+    private void lockOn(Spot spot) {
         target = pendingTarget;
         base = spot.base();
-        placedObsidianHere = false;
-        if (originalSlot < 0) originalSlot = InputSim.selectedSlot();
-        if (!lookPending && !MouseSim.returning()) {
-            startYaw = mc.player.getYRot();
-            startPitch = mc.player.getXRot();
-        }
-        lookPending = true;
-        cycleTicks = 0;
-        if (spot.crystal() != null) enterStage(Stage.BREAK, 0);
-        else if (spot.needsObsidian()) enterStage(Stage.OBSIDIAN, 0);
-        else enterStage(Stage.CRYSTAL, delay(placeDelay));
-    }
-
-    /** The opponent the last planned spot is for. */
-    private LivingEntity pendingTarget;
-
-    private void enterStage(Stage s, int waitTicks) {
-        stage = s;
+        lastBase = base;
         stageTicks = 0;
-        wait = waitTicks;
-        clicked = false;
-        clickTick = -1;
-        breakArmed = false;
-        breakClicks = 0;
+        pausedTicks = 0;
+        blockedTicks = 0;
+        placesUnanswered = 0;
+        hitsOnCrystal = 0;
+        crystalId = -1;
+        crystalSeenTick = -1;
+        crystalGoneTick = ticks - 100;
+        placeTick = -100;
+        attackTick = -100;
+        nextRecheck = ticks + recheckInterval.intValue();
         aim = null;
-    }
-
-    // =====================================================================================================
-    // Stages
-    // =====================================================================================================
-
-    private void obsidianStage() {
-        BlockState state = mc.level.getBlockState(base);
-        if (isCrystalBase(state)) { // it's down
-            if (clicked) {
-                placedObsidianHere = true;
-                ownObsidian.add(base);
-                trim(ownObsidian, 32);
-            }
-            enterStage(Stage.CRYSTAL, delay(obsidianDelay));
-            return;
-        }
-        if (clicked) {
-            if (stageTicks - clickTick > 8) giveUp(60); // never showed up: refused, or someone was in the way
-            return;
-        }
-        if (!canPlaceBlockAt(state) || blockedByEntity(base) || !crystalSpaceFree(base)) {
-            giveUp(40);
-            return;
-        }
-        int slot = findSlot(Items.OBSIDIAN);
-        if (slot < 0) {
-            endCycle(false);
-            return;
-        }
-        Action a = Action.REFUSED;
-        if (state.canBeReplaced() && !state.isAir() && !state.getShape(mc.level, base).isEmpty()) {
-            a = useOn(slot, base, null);
-        }
-        if (a == Action.REFUSED) {
-            for (Direction side : supportSides(base)) {
-                a = useOn(slot, base.relative(side), side.getOpposite());
-                if (a != Action.REFUSED) break;
-            }
-        }
-        switch (a) {
-            case REFUSED -> giveUp(60);
-            case CLICKED -> {
-                clicked = true;
-                clickTick = stageTicks;
-                obsidianTicks.addLast(ticks);
-            }
-            default -> {
-            }
+        if (spot.needsObsidian()) {
+            stage = Stage.OBSIDIAN;
+            obsidianClicked = false;
+            wait = 0;
+        } else {
+            stage = Stage.SPAM;
+            wait = 0;
         }
     }
 
-    private void crystalStage() {
-        if (findCrystalOn(base) != null) {
-            ownCrystals.add(base);
-            trim(ownCrystals, 16);
-            enterStage(Stage.BREAK, 0);
-            return;
-        }
-        if (clicked) {
-            if (stageTicks - clickTick > 8) giveUp(40);
-            return;
-        }
-        if (!isCrystalBase(mc.level.getBlockState(base)) || !crystalSpaceFree(base)) {
-            giveUp(20);
-            return;
-        }
-        // the plan is a few ticks old: is the crystal still worth it, now, with the obsidian down?
-        if (!stillWorthIt()) {
-            giveUp(10);
-            return;
-        }
-        int slot = crystalSlot();
-        if (slot == -2) {
-            endCycle(false);
-            return;
-        }
-        Action a = useOn(slot, base, Direction.UP);
-        if (a == Action.REFUSED) giveUp(40);
-        else if (a == Action.CLICKED) {
-            clicked = true;
-            clickTick = stageTicks;
-        }
-    }
-
-    private void breakStage() {
-        EndCrystal crystal = findCrystalOn(base);
-        if (crystal == null) {
-            if (breakClicks > 0 || breakArmed) endCycle(breakClicks > 0); // broken (by us, or by someone else)
-            else if (stageTicks > 10) endCycle(false);
-            return;
-        }
-        if (!breakArmed) { // the crystal just showed up: the break delay counts from here
-            breakArmed = true;
-            wait = delay(breakDelay);
-            if (wait > 0) return;
-        }
-        if (clicked && stageTicks - clickTick < 3) return; // give the hit time to register
-        if (breakClicks >= breakAttempts.intValue()) {
-            giveUp(60);
-            return;
-        }
-        if (antiSuicide.get()) {
-            float taken = ExplosionDamage.damage(mc.player, crystal.position(), ExplosionDamage.CRYSTAL_POWER, null, null);
-            if (taken > 0 && taken + safetyMargin.floatValue() >= mc.player.getHealth() + mc.player.getAbsorptionAmount()) {
-                giveUp(60);
-                return;
-            }
-        }
-        int slot = -1;
-        if (antiWeakness.get() && mc.player.hasEffect(MobEffects.WEAKNESS) && !mc.player.hasEffect(MobEffects.STRENGTH)) {
-            ItemStack held = mc.player.getMainHandItem();
-            if (!held.is(ItemTags.SWORDS) && !held.is(ItemTags.AXES)) {
-                slot = findWeaponSlot();
-                if (slot < 0) {
-                    giveUp(100);
-                    return;
-                }
-            }
-        }
-        Action a = click(slot, crystal, hit -> Crosshair.hits(hit, crystal), () -> Crosshair.solve(crystal, aimMode()), mc.options.keyAttack);
-        if (a == Action.REFUSED) giveUp(20);
-        else if (a == Action.CLICKED) {
-            clicked = true;
-            clickTick = stageTicks;
-            breakClicks++;
-        }
-    }
-
-    private boolean stillWorthIt() {
-        LivingEntity t = target;
-        if (t == null || !t.isAlive() || t.isDeadOrDying() || mc.player.distanceTo(t) > targetRange.get()) return false;
-        Vec3 c = crystalCenter(base);
-        float dealt = ExplosionDamage.damage(t, c, ExplosionDamage.CRYSTAL_POWER, null, null);
-        float hp = t.getHealth() + t.getAbsorptionAmount();
-        if (dealt < minDamageFor(t) && !(lethalOverride.get() && dealt >= hp)) return false;
-        float taken = ExplosionDamage.damage(mc.player, c, ExplosionDamage.CRYSTAL_POWER, null, null);
-        if (taken > maxSelfDamage.floatValue()) return false;
-        return !antiSuicide.get() || taken <= 0 || taken + safetyMargin.floatValue() < mc.player.getHealth() + mc.player.getAbsorptionAmount();
-    }
-
-    // =====================================================================================================
-    // Ending a cycle
-    // =====================================================================================================
-
-    /** Gives up on this base and leaves it alone for {@code parkTicks}, so the next search goes elsewhere. */
-    private void giveUp(int parkTicks) {
-        if (base != null) parked.put(base, ticks + parkTicks);
-        endCycle(false);
-    }
-
-    private void endCycle(boolean success) {
-        if (success) lastBase = base;
+    /** Lets go of the spot. {@code parkTicks} > 0 also keeps it out of the search for that long. */
+    private void unlock(int parkTicks) {
+        if (base != null && parkTicks > 0) parked.put(base, ticks + parkTicks);
         if (MouseSim.active() && !MouseSim.returning()) MouseSim.stop();
         InputLock.release(this);
         stage = Stage.IDLE;
         base = null;
         aim = null;
         idleTicks = 0;
-        cooldown = delay(cycleDelay);
+        cooldown = 0;
     }
 
     /** Another module took the input over: stop without touching the slot or the camera. */
-    private void dropCycle() {
+    private void dropLock() {
         stage = Stage.IDLE;
         base = null;
         aim = null;
@@ -675,6 +555,182 @@ public final class AutoCrystal extends Module {
         cooldown = 10;
     }
 
+    private void obsidianStage() {
+        BlockState state = mc.level.getBlockState(base);
+        if (isCrystalBase(state)) { // it's down: crystals from here on
+            stage = Stage.SPAM;
+            stageTicks = 0;
+            wait = obsidianClicked ? delay(obsidianDelay) : 0;
+            return;
+        }
+        if (obsidianClicked) {
+            if (stageTicks - obsidianClickTick > retryTicks.intValue() + 4) unlock(60); // never showed up
+            return;
+        }
+        if (stageTicks > 40 || !canPlaceBlockAt(state) || blockedByEntity(base) || !crystalSpaceFree(base)) {
+            unlock(40);
+            return;
+        }
+        int slot = findSlot(Items.OBSIDIAN);
+        if (slot < 0) {
+            unlock(0);
+            return;
+        }
+        Action a = Action.REFUSED;
+        if (state.canBeReplaced() && !state.isAir() && !state.getShape(mc.level, base).isEmpty()) a = useOn(slot, base, null);
+        if (a == Action.REFUSED) {
+            for (Direction side : supportSides(base)) {
+                a = useOn(slot, base.relative(side), side.getOpposite());
+                if (a != Action.REFUSED) break;
+            }
+        }
+        switch (a) {
+            case REFUSED -> unlock(60);
+            case CLICKED -> {
+                obsidianClicked = true;
+                obsidianClickTick = stageTicks;
+                obsidianTicks.addLast(ticks);
+            }
+            default -> {
+            }
+        }
+    }
+
+    /**
+     * Places and breaks crystals on the locked spot, one click per tick: break whatever crystal stands there, place
+     * a new one when it's gone. The camera stays on the spot, so after the first turn nothing has to move.
+     */
+    private void spam() {
+        String why = lockProblem();
+        if (why != null) {
+            unlock(why.equals("unsafe") || why.equals("unreachable") ? 40 : 0);
+            return;
+        }
+        // now and then: is there a spot so much better it's worth moving?
+        if (!stickToSpot.get() || ticks >= nextRecheck) {
+            nextRecheck = ticks + (stickToSpot.get() ? recheckInterval.intValue() : 1);
+            Spot better = plan();
+            if (better != null && !better.base().equals(base) && worthSwitching(better)) {
+                lockOn(better);
+                return;
+            }
+        }
+        EndCrystal crystal = findCrystalOn(base);
+        if (crystal != null) {
+            breakCrystal(crystal);
+            return;
+        }
+        if (crystalSeenTick >= 0) { // it was there and now it's gone
+            crystalSeenTick = -1;
+            crystalGoneTick = ticks;
+            placesUnanswered = 0;
+            hitsOnCrystal = 0;
+        }
+        if (!isCrystalBase(mc.level.getBlockState(base))) {
+            unlock(0);
+            return;
+        }
+        if (ticks - crystalGoneTick < delay(placeDelay)) return;
+        if (ticks - placeTick < retryTicks.intValue()) return; // waiting for the server to spawn it
+        if (!crystalSpaceFree(base)) { // someone or something standing in it: wait a little, then move on
+            if (++blockedTicks > 10) unlock(20);
+            return;
+        }
+        blockedTicks = 0;
+        if (placesUnanswered >= 3) { // the server keeps refusing placements here
+            unlock(60);
+            return;
+        }
+        int slot = crystalSlot();
+        if (slot == -2) {
+            unlock(0);
+            return;
+        }
+        Action a = useOn(slot, base, Direction.UP);
+        if (a == Action.REFUSED) unlock(40);
+        else if (a == Action.CLICKED) {
+            placeTick = ticks;
+            placesUnanswered++;
+            ownCrystals.add(base);
+            trim(ownCrystals, 16);
+        }
+    }
+
+    private void breakCrystal(EndCrystal crystal) {
+        if (crystal.getId() != crystalId) {
+            crystalId = crystal.getId();
+            crystalSeenTick = ticks;
+            hitsOnCrystal = 0;
+            placesUnanswered = 0;
+        }
+        if (ticks - crystalSeenTick < breakDelay.intValue()) return;
+        if (ticks - attackTick < retryTicks.intValue()) return; // waiting for the server to remove it
+        if (hitsOnCrystal >= breakAttempts.intValue()) {
+            unlock(60);
+            return;
+        }
+        if (antiSuicide.get()) {
+            float taken = ExplosionDamage.damage(mc.player, crystal.position(), ExplosionDamage.CRYSTAL_POWER, null, null);
+            if (taken > 0 && taken + safetyMargin.floatValue() >= mc.player.getHealth() + mc.player.getAbsorptionAmount()) {
+                unlock(40);
+                return;
+            }
+        }
+        int slot = -1;
+        if (antiWeakness.get() && mc.player.hasEffect(MobEffects.WEAKNESS) && !mc.player.hasEffect(MobEffects.STRENGTH)) {
+            ItemStack held = mc.player.getMainHandItem();
+            if (!held.is(ItemTags.SWORDS) && !held.is(ItemTags.AXES)) {
+                slot = findWeaponSlot();
+                if (slot < 0) {
+                    unlock(100);
+                    return;
+                }
+            }
+        }
+        Action a = click(slot, crystal, hit -> Crosshair.hits(hit, crystal), () -> Crosshair.solve(crystal, aimMode()), mc.options.keyAttack);
+        if (a == Action.REFUSED) unlock(20);
+        else if (a == Action.CLICKED) {
+            attackTick = ticks;
+            hitsOnCrystal++;
+        }
+    }
+
+    /** Why the locked spot shouldn't be used any more, or null if it's still good. */
+    private String lockProblem() {
+        LivingEntity t = target;
+        if (t == null || !t.isAlive() || t.isDeadOrDying() || t.isSpectator() || mc.player.distanceTo(t) > targetRange.get()) return "target";
+        Vec3 eyes = mc.player.getEyePosition();
+        Vec3 top = new Vec3(base.getX() + 0.5, base.getY() + 1.0, base.getZ() + 0.5);
+        if (top.distanceTo(eyes) > placeRange.get() + 0.25 || !inBreakReach(eyes, base)) return "unreachable";
+        Vec3 c = crystalCenter(base);
+        float dealt = ExplosionDamage.damage(t, c, ExplosionDamage.CRYSTAL_POWER, null, null);
+        float hp = t.getHealth() + t.getAbsorptionAmount();
+        boolean lethal = lethalOverride.get() && dealt >= hp;
+        float floor = stickToSpot.get() ? keepAbove.floatValue() : minDamageFor(t);
+        if (dealt < floor && !lethal) return "weak";
+        if (stickToSpot.get() && angleBetween(crystalBody(base), t.getBoundingBox().getCenter()) > maxAngle.get()) return "angle";
+        float taken = ExplosionDamage.damage(mc.player, c, ExplosionDamage.CRYSTAL_POWER, null, null);
+        if (taken > maxSelfDamage.floatValue()) return "unsafe";
+        if (antiSuicide.get() && taken > 0 && taken + safetyMargin.floatValue() >= mc.player.getHealth() + mc.player.getAbsorptionAmount()) return "unsafe";
+        return null;
+    }
+
+    private boolean worthSwitching(Spot other) {
+        if (!stickToSpot.get()) return other.score() > 0;
+        LivingEntity t = target;
+        float current = t == null ? 0 : ExplosionDamage.damage(t, crystalCenter(base), ExplosionDamage.CRYSTAL_POWER, null, null);
+        boolean otherLethal = t != null && other.score() >= 100;
+        boolean currentLethal = t != null && lethalOverride.get() && current >= t.getHealth() + t.getAbsorptionAmount();
+        if (otherLethal && !currentLethal) return true;
+        return other.dealt() - current >= switchGain.floatValue();
+    }
+
+    private static double angleBetween(Vec3 a, Vec3 b) {
+        Vec3 eye = mc.player.getEyePosition();
+        Vec3 u = a.subtract(eye).normalize(), v = b.subtract(eye).normalize();
+        return Math.toDegrees(Math.acos(Math.max(-1, Math.min(1, u.dot(v)))));
+    }
+
     // =====================================================================================================
     // Planning
     // =====================================================================================================
@@ -682,7 +738,7 @@ public final class AutoCrystal extends Module {
     private Spot plan() {
         List<LivingEntity> targets = targets();
         if (targets.isEmpty()) {
-            target = null;
+            if (stage == Stage.IDLE) target = null;
             return null;
         }
         // someone you just knocked up comes first
@@ -704,7 +760,7 @@ public final class AutoCrystal extends Module {
             }
             if (!all && s != null) break;
         }
-        target = bestTarget != null ? bestTarget : targets.get(0);
+        if (stage == Stage.IDLE) target = bestTarget != null ? bestTarget : targets.get(0);
         pendingTarget = bestTarget;
         return best;
     }
@@ -713,6 +769,8 @@ public final class AutoCrystal extends Module {
         float hp = t.getHealth() + t.getAbsorptionAmount();
         float min = minDamageFor(t);
         float selfHp = mc.player.getHealth() + mc.player.getAbsorptionAmount();
+        Vec3 eyes = mc.player.getEyePosition();
+        Vec3 targetCenter = t.getBoundingBox().getCenter();
 
         // 1) a crystal already standing near them: breaking it costs one click
         Spot breakSpot = null;
@@ -720,7 +778,7 @@ public final class AutoCrystal extends Module {
             EndCrystal c = (EndCrystal) e;
             BlockPos under = c.blockPosition().below();
             if (breakMode.is("Own") && !ownCrystals.contains(under)) continue;
-            if (mc.player.getEyePosition().distanceTo(c.getBoundingBox().getCenter()) > mc.player.entityInteractionRange() + 0.5) continue;
+            if (eyes.distanceTo(c.getBoundingBox().getCenter()) > mc.player.entityInteractionRange() + 0.5) continue;
             if (Crosshair.turnTo(c.getBoundingBox().getCenter()) > maxTurn.get()) continue;
             float dealt = ExplosionDamage.damage(t, c.position(), ExplosionDamage.CRYSTAL_POWER, null, null);
             boolean lethal = lethalOverride.get() && dealt >= hp;
@@ -737,14 +795,14 @@ public final class AutoCrystal extends Module {
         boolean obsidianAllowed = obsidianAllowed(t);
         List<Spot> existing = new ArrayList<>();
         List<Spot> fresh = new ArrayList<>();
-        Vec3 eyes = mc.player.getEyePosition();
         double reach = placeRange.get();
         Vec3 motion = new Vec3(t.getX() - t.xo, 0, t.getZ() - t.zo);
         Vec3 ahead = motion.scale(predictTicks.intValue());
-        // a new block takes longer: obsidian, delay, crystal, delay, break
+        // a new block takes longer: obsidian, then the crystal, then the break
         Vec3 aheadObsidian = motion.scale(predictTicks.intValue() + 3 + obsidianDelay.intValue() + breakDelay.intValue());
         BlockPos origin = BlockPos.containing(t.position().add(ahead));
         int r = (int) Math.ceil(reach);
+        double angleLimit = stickToSpot.get() ? maxAngle.get() : 180;
         for (BlockPos cursor : BlockPos.betweenClosed(origin.offset(-r, -3, -r), origin.offset(r, 1, r))) {
             BlockPos pos = cursor.immutable();
             Vec3 top = new Vec3(pos.getX() + 0.5, pos.getY() + 1.0, pos.getZ() + 0.5);
@@ -754,7 +812,8 @@ public final class AutoCrystal extends Module {
             BlockState state = mc.level.getBlockState(pos);
             boolean isBase = isCrystalBase(state);
             if (!isBase && !obsidianAllowed) continue;
-            if (!crystalSpaceFree(pos)) continue;
+            boolean current = pos.equals(base);
+            if (!current && !crystalSpaceFree(pos)) continue;
             if (!isBase) {
                 if (state.is(Blocks.SNOW) && state.getValue(BlockStateProperties.LAYERS) > 1) continue;
                 if (!canPlaceBlockAt(state)) continue;
@@ -763,12 +822,11 @@ public final class AutoCrystal extends Module {
                 if (blockedByEntity(pos)) continue;
                 if (avoidPath.get() && inPath(t, pos)) continue;
             }
-            if (Crosshair.turnTo(top) > maxTurn.get()) continue;
-            // the crystal has to be hit by hand afterwards, which only reaches as far as entity reach
-            if (!inBreakReach(eyes, pos)) continue;
+            if (!current && Crosshair.turnTo(top) > maxTurn.get()) continue;
+            if (angleBetween(crystalBody(pos), targetCenter) > angleLimit) continue; // a spot it would leave again straight away
+            if (!inBreakReach(eyes, pos)) continue; // the crystal has to be hit by hand afterwards
             Vec3 c = crystalCenter(pos);
-            // cheap bound before the exposure raycasts
-            float bound = ExplosionDamage.maxDamage(t, c, ExplosionDamage.CRYSTAL_POWER);
+            float bound = ExplosionDamage.maxDamage(t, c, ExplosionDamage.CRYSTAL_POWER); // cheap bound before the raycasts
             if (bound < min && !(lethalOverride.get() && bound >= hp)) continue;
             BlockPos extra = isBase ? null : pos;
             float dealt = ExplosionDamage.damage(t, ahead, c, ExplosionDamage.CRYSTAL_POWER, extra, null);
@@ -783,10 +841,9 @@ public final class AutoCrystal extends Module {
             if (taken > maxSelfDamage.floatValue()) continue;
             if (antiSuicide.get() && taken > 0 && taken + safetyMargin.floatValue() >= selfHp) continue;
             double score = dealt - taken * selfWeight.get() - Crosshair.turnTo(top) * 0.004 + (lethal ? 100 : 0);
-            if (isBase && ownObsidian.contains(pos)) score += 0.3; // reuse what it already placed
             (isBase ? existing : fresh).add(new Spot(pos, !isBase, null, dealt, taken, score));
         }
-        Spot bestExisting = pick(existing, true);
+        Spot bestExisting = pick(existing);
         Spot bestFresh = null;
         if (!fresh.isEmpty() && findSlot(Items.OBSIDIAN) >= 0) {
             fresh.sort(Comparator.comparingDouble(Spot::score).reversed());
@@ -804,12 +861,12 @@ public final class AutoCrystal extends Module {
         return best;
     }
 
-    /** The best of these whose top face the crosshair can actually reach, sticking with the last base when it's about as good. */
-    private Spot pick(List<Spot> spots, boolean sticky) {
+    /** The best of these whose top face the crosshair can actually reach, staying on the last base when it's about as good. */
+    private Spot pick(List<Spot> spots) {
         if (spots.isEmpty()) return null;
         spots.sort(Comparator.comparingDouble(Spot::score).reversed());
         double top = spots.get(0).score();
-        if (sticky && lastBase != null) {
+        if (lastBase != null) {
             for (Spot s : spots) {
                 if (s.base().equals(lastBase) && s.score() >= top - 1 && Crosshair.solve(s.base(), Direction.UP, aimMode(), edgeMargin.get()) != null) return s;
             }
@@ -822,15 +879,6 @@ public final class AutoCrystal extends Module {
         return null;
     }
 
-    /** Whether a crystal standing on {@code base} would be within the crosshair's entity reach. */
-    private boolean inBreakReach(Vec3 eyes, BlockPos base) {
-        AABB box = new AABB(base.getX() - 0.5, base.getY() + 1, base.getZ() - 0.5, base.getX() + 1.5, base.getY() + 3, base.getZ() + 1.5);
-        double dx = Math.max(Math.max(box.minX - eyes.x, 0), eyes.x - box.maxX);
-        double dy = Math.max(Math.max(box.minY - eyes.y, 0), eyes.y - box.maxY);
-        double dz = Math.max(Math.max(box.minZ - eyes.z, 0), eyes.z - box.maxZ);
-        return Math.sqrt(dx * dx + dy * dy + dz * dz) < mc.player.entityInteractionRange() - 0.1;
-    }
-
     private boolean obsidianReachable(BlockPos pos) {
         BlockState state = mc.level.getBlockState(pos);
         if (state.canBeReplaced() && !state.isAir() && !state.getShape(mc.level, pos).isEmpty()
@@ -839,6 +887,15 @@ public final class AutoCrystal extends Module {
             if (Crosshair.solve(pos.relative(side), side.getOpposite(), aimMode(), edgeMargin.get()) != null) return true;
         }
         return false;
+    }
+
+    /** Whether a crystal standing on {@code base} would be within the crosshair's entity reach. */
+    private boolean inBreakReach(Vec3 eyes, BlockPos base) {
+        AABB box = new AABB(base.getX() - 0.5, base.getY() + 1, base.getZ() - 0.5, base.getX() + 1.5, base.getY() + 3, base.getZ() + 1.5);
+        double dx = Math.max(Math.max(box.minX - eyes.x, 0), eyes.x - box.maxX);
+        double dy = Math.max(Math.max(box.minY - eyes.y, 0), eyes.y - box.maxY);
+        double dz = Math.max(Math.max(box.minZ - eyes.z, 0), eyes.z - box.maxZ);
+        return Math.sqrt(dx * dx + dy * dy + dz * dz) < mc.player.entityInteractionRange() - 0.1;
     }
 
     private boolean obsidianAllowed(LivingEntity t) {
@@ -876,6 +933,8 @@ public final class AutoCrystal extends Module {
         } else {
             found.sort(byDistance);
         }
+        // stay on the opponent we're fighting if they're still a candidate
+        if (target != null && found.remove(target) && !priority.is("Most damage")) found.add(0, target);
         return found;
     }
 
@@ -913,7 +972,7 @@ public final class AutoCrystal extends Module {
     /**
      * Selects {@code slot} (unless it's -1), turns the camera until the predicted crosshair satisfies {@code onTarget},
      * and presses {@code key} once the camera has been still for the settle time and the slot has been held for the
-     * swap delay.
+     * swap delay. When the crosshair is already on target and the camera hasn't moved, the click goes out at once.
      */
     private Action click(int slot, Object key, Predicate<HitResult> onTarget, Supplier<Crosshair.Aim> solver, KeyMapping keyMapping) {
         if (mc.player.isUsingItem()) return Action.AIMING;
@@ -932,12 +991,13 @@ public final class AutoCrystal extends Module {
             MouseSim.aim(aim.yaw(), aim.pitch(), profile(), holdCamera.get());
             return Action.AIMING;
         }
-        // on target: keep the camera here for the settle time (a tick or two), then click
-        MouseSim.aim(mc.player.getYRot(), mc.player.getXRot(), profile(), true);
-        if (stillTicks < settleTicks.intValue()) return Action.AIMING;
+        if (stillTicks < settleTicks.intValue()) { // just arrived: hold it here until the server has this view
+            MouseSim.aim(mc.player.getYRot(), mc.player.getXRot(), profile(), true);
+            return Action.AIMING;
+        }
         if (slot >= 0 && swapDelay.intValue() > 0 && ticks - swapTick < swapDelay.intValue()) return Action.AIMING;
         if (!InputSim.click(keyMapping)) return Action.REFUSED;
-        MouseSim.stop(); // the mouse is the player's again
+        if (MouseSim.active() && !MouseSim.returning()) MouseSim.stop(); // the mouse is the player's again
         aim = null;
         return Action.CLICKED;
     }
@@ -984,6 +1044,7 @@ public final class AutoCrystal extends Module {
                 if (passive(mc.player.getInventory().getItem(i))) return i;
             }
         }
+        if (mc.player.getMainHandItem().is(Items.END_CRYSTAL)) return -1;
         int slot = findSlot(Items.END_CRYSTAL);
         if (slot >= 0) return slot;
         if (offhand) {
@@ -1025,6 +1086,11 @@ public final class AutoCrystal extends Module {
 
     private static Vec3 crystalCenter(BlockPos base) {
         return new Vec3(base.getX() + 0.5, base.getY() + 1.0, base.getZ() + 0.5);
+    }
+
+    /** The middle of a crystal standing on {@code base}, which is what "how far off from the opponent" is measured to. */
+    private static Vec3 crystalBody(BlockPos base) {
+        return new Vec3(base.getX() + 0.5, base.getY() + 1.5, base.getZ() + 0.5);
     }
 
     private static boolean canPlaceBlockAt(BlockState state) {

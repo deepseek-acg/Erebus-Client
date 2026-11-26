@@ -40,7 +40,7 @@ public final class ModuleListElement extends HudElement {
         widths.clear();
         for (Module m : Erebus.modules().enabled()) entries.add(new Entry(m.name, suffixes.get() ? m.suffix() : null));
         if (entries.isEmpty() && preview) {
-            entries.add(new Entry("AutoCrystal", suffixes.get() ? "Damage" : null));
+            entries.add(new Entry("Crystal Aura", suffixes.get() ? "Damage" : null));
             entries.add(new Entry("AutoTotem", null));
             entries.add(new Entry("Surround", suffixes.get() ? "Teleport" : null));
             entries.add(new Entry("ElytraFly", suffixes.get() ? "Control" : null));
