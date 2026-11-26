@@ -27,21 +27,36 @@ public final class SettingsBuilder {
      */
     public static int build(Container into, List<? extends Setting<?>> settings, int x, int y, int w,
                             int designW, int designH, Runnable relayout) {
+        String group = null;
+        boolean first = true;
         for (Setting<?> s : settings) {
             if (!s.isVisible()) continue;
+            if (s.group != null && !s.group.equals(group)) {
+                y = section(into, s.group, x, first ? y : y + 8, w);
+                group = s.group;
+            }
+            first = false;
             y = row(into, s, x, y, w, designW, designH, relayout);
         }
         return y;
     }
 
+    /** True if the first visible setting has no group, so the caller should title the list itself. */
+    public static boolean startsUngrouped(List<? extends Setting<?>> settings) {
+        for (Setting<?> s : settings) {
+            if (s.isVisible()) return s.group == null;
+        }
+        return false;
+    }
+
     public static int row(Container into, Setting<?> s, int x, int y, int w, int designW, int designH, Runnable relayout) {
         int cx = x + w - CONTROL_W;
         if (s instanceof NumberSetting n) {
-            into.add(label(x, y + 3, w, s.name, n::format));
+            into.add(label(x, y + 3, w, s, n::format));
             into.add(new Slider(x, y + 15, w, n::fraction, f -> n.setFraction(f)));
             return y + 31;
         }
-        into.add(label(x, y, w - CONTROL_W - 6, s.name, null));
+        into.add(label(x, y, w - CONTROL_W - 6, s, null));
         if (s instanceof BoolSetting b) {
             into.add(new Switch(x + w - Switch.W, y + (ROW - Switch.H) / 2 - 1, b::get, v -> {
                 b.set(v);
@@ -62,11 +77,15 @@ public final class SettingsBuilder {
         return y + ROW;
     }
 
-    private static Drawable label(int x, int y, int w, String name, java.util.function.Supplier<String> value) {
-        return new Drawable(x, y, w, ROW, (ui, self, mx, my) -> {
+    private static Drawable label(int x, int y, int w, Setting<?> s, java.util.function.Supplier<String> value) {
+        return new Drawable(x, y, w, value == null ? ROW : 12, (ui, self, mx, my) -> {
             int ty = Ui.centerY(self.y, value == null ? ROW : 10) + (value == null ? -1 : 0);
-            ui.text(ui.ellipsize(name, self.width - (value == null ? 0 : 40)), self.x, ty, ui.theme.text());
+            String name = ui.ellipsize(s.name, self.width - (value == null ? 0 : 40));
+            int tw = ui.text(name, self.x, ty, ui.theme.text());
             if (value != null) ui.textRight(value.get(), self.right(), ty, ui.theme.accent());
+            if (!s.description.isBlank() && mx >= self.x && mx < self.x + tw + 4 && my >= self.y && my < self.bottom()) {
+                ui.tooltip(s, s.description);
+            }
         });
     }
 

@@ -29,6 +29,11 @@ public final class HudPage extends Page {
     }
 
     @Override
+    public dev.erebus.client.render.font.Icon icon() {
+        return dev.erebus.client.render.font.Icon.GRID;
+    }
+
+    @Override
     public String label() {
         return "HUD";
     }
@@ -93,7 +98,7 @@ public final class HudPage extends Page {
         py += 28;
 
         if (!e.settings().isEmpty()) {
-            py = SettingsBuilder.section(pane, "Settings", px, py, pw);
+            if (SettingsBuilder.startsUngrouped(e.settings())) py = SettingsBuilder.section(pane, "Settings", px, py, pw);
             SettingsBuilder.build(pane, e.settings(), px, py, pw, DashboardScreen.W, DashboardScreen.H, screen::rebuild);
         }
     }

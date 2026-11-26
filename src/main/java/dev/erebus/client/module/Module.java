@@ -4,31 +4,50 @@ import dev.erebus.client.notify.Notifications;
 import dev.erebus.client.setting.KeybindSetting;
 import dev.erebus.client.setting.ModeSetting;
 import dev.erebus.client.setting.Setting;
+import dev.erebus.client.util.Chat;
+import net.minecraft.client.Minecraft;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * Base class for future modules. The dashboard lists modules by category and renders their
- * settings automatically; no concrete modules exist yet.
+ * Base class for modules. The dashboard lists modules by category and renders their settings automatically;
+ * enabled modules receive {@link #onTick()} and {@link #onRenderWorld(WorldRender)}.
  */
 public abstract class Module {
+    protected static final Minecraft mc = Minecraft.getInstance();
+
     public final String name;
     public final String description;
     public final Category category;
     public final KeybindSetting keybind = new KeybindSetting("Keybind", "Key that toggles this module.", KeybindSetting.NONE);
 
     private final List<Setting<?>> settings = new ArrayList<>();
+    private final boolean defaultEnabled;
     private boolean enabled;
+    private String currentGroup;
+    /** Shown in the dashboard and module list when non-null, e.g. how many things a finder has found. */
+    protected String info;
 
     protected Module(String name, String description, Category category) {
+        this(name, description, category, false);
+    }
+
+    protected Module(String name, String description, Category category, boolean defaultEnabled) {
         this.name = name;
         this.description = description;
         this.category = category;
+        this.defaultEnabled = defaultEnabled;
+    }
+
+    /** Settings added after this call are listed under a section with this title. */
+    protected void group(String title) {
+        currentGroup = title;
     }
 
     protected <S extends Setting<?>> S add(S setting) {
+        if (setting.group == null) setting.group = currentGroup;
         settings.add(setting);
         return setting;
     }
@@ -37,16 +56,29 @@ public abstract class Module {
         return Collections.unmodifiableList(settings);
     }
 
+    public boolean defaultEnabled() {
+        return defaultEnabled;
+    }
+
     public boolean isEnabled() {
         return enabled;
     }
 
     public void setEnabled(boolean on) {
+        setEnabled(on, true);
+    }
+
+    /** Turns the module on or off; {@code announce} = show a toast. Config loading turns modules on silently. */
+    public void setEnabled(boolean on, boolean announce) {
         if (on == enabled) return;
         enabled = on;
-        if (on) onEnable();
-        else onDisable();
-        Notifications.moduleToggled(name, on);
+        try {
+            if (on) onEnable();
+            else onDisable();
+        } catch (Throwable t) {
+            org.slf4j.LoggerFactory.getLogger("Erebus").warn("{} failed to {}", name, on ? "enable" : "disable", t);
+        }
+        if (announce) Notifications.moduleToggled(name, on);
     }
 
     public void toggle() {
@@ -55,15 +87,45 @@ public abstract class Module {
 
     /** Short status shown next to the name in the module list HUD, or null. */
     public String suffix() {
+        if (info != null) return info;
         for (Setting<?> s : settings) {
             if (s instanceof ModeSetting mode) return mode.get();
         }
         return null;
     }
 
+    /** A button shown on the module's dashboard page. */
+    public record Action(String label, Runnable run) {
+    }
+
+    /** Buttons for the module's dashboard page (e.g. Open map). */
+    public List<Action> actions() {
+        return List.of();
+    }
+
+    public String info() {
+        return info;
+    }
+
+    protected void chat(String message) {
+        Chat.info(message);
+    }
+
     protected void onEnable() {
     }
 
     protected void onDisable() {
+    }
+
+    /** Called at the end of every client tick while enabled. */
+    public void onTick() {
+    }
+
+    /** Called once per frame while the world is rendered, with world gizmo collection active. */
+    public void onRenderWorld(WorldRender ctx) {
+    }
+
+    /** Called once per frame on the HUD, under the HUD elements. Use {@link dev.erebus.client.render.Projection} for world labels. */
+    public void onRenderOverlay(dev.erebus.client.gui.Ui ui) {
     }
 }

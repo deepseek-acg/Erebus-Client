@@ -96,6 +96,8 @@ public abstract class UiScreen extends net.minecraft.client.gui.screens.Screen {
         updateOrigin();
         int mx = (int) Math.floor(toLocalX(mouseX));
         int my = (int) Math.floor(toLocalY(mouseY));
+        ui.mouseX = mx;
+        ui.mouseY = my;
         Widget pop = ui.popover();
         boolean overPopover = pop != null && pop.contains(mx, my);
         int wmx = overPopover ? -10000 : mx;
@@ -108,7 +110,33 @@ public abstract class UiScreen extends net.minecraft.client.gui.screens.Screen {
         root.render(ui, wmx, wmy);
         renderOverlay(ui, wmx, wmy);
         if (pop != null) pop.render(ui, mx, my);
+        String tip = ui.takeTooltip();
+        if (tip != null) drawTooltip(tip, mx, my);
         g.pose().popMatrix();
+    }
+
+    /** A wrapped description bubble near the mouse, kept inside the design space. */
+    protected void drawTooltip(String text, int mx, int my) {
+        java.util.List<String> lines = ui.wrap(text, 190);
+        int w = 0;
+        for (String l : lines) w = Math.max(w, ui.width(l));
+        w += 14;
+        int h = lines.size() * 11 + 9;
+        int x = mx + 10;
+        int y = my + 12;
+        if (x + w > designWidth() - 2) x = mx - w - 6;
+        if (y + h > designHeight() - 2) y = my - h - 6;
+        x = Math.max(2, x);
+        y = Math.max(2, y);
+        int r = ui.smallRadius();
+        dev.erebus.client.render.Render2D.shadow(ui.g, x, y, w, h, r, 4, 0x70000000);
+        ui.round(x, y, w, h, r, dev.erebus.client.util.Colors.withAlpha(ui.theme.get(dev.erebus.client.theme.ThemeColor.BACKGROUND), 0xF7));
+        ui.border(x, y, w, h, r, ui.theme.border());
+        int ly = y + 5;
+        for (String l : lines) {
+            ui.text(l, x + 7, ly, ui.theme.text());
+            ly += 11;
+        }
     }
 
     @Override

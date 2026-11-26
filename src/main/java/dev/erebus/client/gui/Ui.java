@@ -4,13 +4,12 @@ import com.mojang.blaze3d.platform.cursor.CursorType;
 import dev.erebus.client.Erebus;
 import dev.erebus.client.gui.widget.Widget;
 import dev.erebus.client.render.Render2D;
+import dev.erebus.client.render.font.Icon;
+import dev.erebus.client.render.font.Text;
 import dev.erebus.client.theme.Theme;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.network.chat.Component;
-import net.minecraft.util.FormattedCharSequence;
 
 import java.util.List;
 
@@ -123,23 +122,25 @@ public final class Ui {
     // ---------------------------------------------------------------- text
 
     public int width(String s) {
-        return font.width(s);
+        return Text.width(s, false);
     }
 
     public int widthBold(String s) {
-        return font.width(Component.literal(s).withStyle(ChatFormatting.BOLD));
+        return Text.width(s, true);
     }
 
     /** Draws text; returns the drawn width. */
     public int text(String s, int x, int y, int color) {
-        g.drawString(font, s, x, y, color, theme.textShadow);
-        return font.width(s);
+        return Text.draw(g, s, x, y, color, false, theme.textShadow);
     }
 
     public int textBold(String s, int x, int y, int color) {
-        Component c = Component.literal(s).withStyle(ChatFormatting.BOLD);
-        g.drawString(font, c, x, y, color, theme.textShadow);
-        return font.width(c);
+        return Text.draw(g, s, x, y, color, true, theme.textShadow);
+    }
+
+    /** Text with a drop shadow regardless of the theme setting (for text drawn over the game world). */
+    public int textShadowed(String s, int x, int y, int color, boolean bold) {
+        return Text.draw(g, s, x, y, color, bold, true);
     }
 
     public void textRight(String s, int right, int y, int color) {
@@ -150,16 +151,37 @@ public final class Ui {
         text(s, cx - width(s) / 2, y, color);
     }
 
-    /** Draws text with each character colored along the accent gradient. */
+    /** Draws text with each character colored along a gradient; kerning is kept by measuring prefixes. */
     public int gradientText(String s, int x, int y, int from, int to, boolean bold) {
-        int cx = x;
         int n = Math.max(1, s.length() - 1);
         for (int i = 0; i < s.length(); i++) {
-            String ch = String.valueOf(s.charAt(i));
+            int cx = x + Text.width(s.substring(0, i), bold);
             int color = dev.erebus.client.util.Colors.lerp(from, to, i / (float) n);
-            cx += bold ? textBold(ch, cx, y, color) : text(ch, cx, y, color);
+            Text.draw(g, String.valueOf(s.charAt(i)), cx, y, color, bold, theme.textShadow);
         }
-        return cx - x;
+        return Text.width(s, bold);
+    }
+
+    /** Draws an icon whose box is {@code size} units tall with its top-left at (x, y). */
+    public void icon(Icon icon, float x, float y, float size, int color) {
+        Text.icon(g, icon, x, y, size, color);
+    }
+
+    /** A world label: a dark pill with an optional colour icon, centred on (cx, y). */
+    public void worldLabel(Icon icon, String text, String detail, int color, float cx, float y) {
+        int tw = width(text) + (detail == null ? 0 : width(detail) + 6);
+        int w = tw + (icon != null ? 18 : 12);
+        int x = Math.round(cx - w / 2f);
+        int yy = Math.round(y);
+        round(x, yy, w, 14, 7, 0xB8101016);
+        border(x, yy, w, 14, 7, dev.erebus.client.util.Colors.withAlpha(color, 0x90));
+        int tx = x + 6;
+        if (icon != null) {
+            icon(icon, tx, yy + 3, 8, color);
+            tx += 12;
+        }
+        tx += text(text, tx, yy + 3, theme.text());
+        if (detail != null) text(detail, tx + 6, yy + 3, dev.erebus.client.util.Colors.mulAlpha(theme.text(), 0.6f));
     }
 
     /** Y offset that vertically centers a line of text in a box of height {@code h}. */
@@ -168,13 +190,42 @@ public final class Ui {
     }
 
     public String ellipsize(String s, int maxWidth) {
-        if (width(s) <= maxWidth) return s;
-        String dots = "...";
-        return font.plainSubstrByWidth(s, Math.max(0, maxWidth - width(dots))) + dots;
+        return Text.ellipsize(s, maxWidth, false);
     }
 
-    public List<FormattedCharSequence> wrap(String s, int width) {
-        return font.split(Component.literal(s), Math.max(10, width));
+    public List<String> wrap(String s, int width) {
+        return Text.wrap(s, Math.max(10, width));
+    }
+
+    // ---------------------------------------------------------------- tooltips
+
+    public int mouseX;
+    public int mouseY;
+    private Object hoverKey;
+    private long hoverSince;
+    private String tooltip;
+
+    /** Shows {@code text} near the mouse after a short hover over the widget identified by {@code key}. */
+    public void tooltip(Object key, String text) {
+        if (text == null || text.isBlank()) return;
+        long now = System.currentTimeMillis();
+        if (key != hoverKey) {
+            hoverKey = key;
+            hoverSince = now;
+        }
+        hoverSeenThisFrame = true;
+        if (now - hoverSince >= 450) tooltip = text;
+    }
+
+    private boolean hoverSeenThisFrame;
+
+    /** Takes the tooltip requested this frame (or null) and resets hover tracking for the next one. */
+    public String takeTooltip() {
+        if (!hoverSeenThisFrame) hoverKey = null;
+        hoverSeenThisFrame = false;
+        String t = tooltip;
+        tooltip = null;
+        return t;
     }
 
     // ---------------------------------------------------------------- shapes

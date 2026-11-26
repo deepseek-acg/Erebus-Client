@@ -27,6 +27,11 @@ public final class ModulesPage extends Page {
     }
 
     @Override
+    public dev.erebus.client.render.font.Icon icon() {
+        return category == null ? dev.erebus.client.render.font.Icon.SEARCH : category.icon;
+    }
+
+    @Override
     public String label() {
         return category == null ? "Search" : category.label;
     }
@@ -48,10 +53,10 @@ public final class ModulesPage extends Page {
                 : Erebus.modules().byCategory(category);
         if (mods.isEmpty()) {
             if (category == null) {
-                screen.emptyState(root, x, y, w, h, "No results",
+                screen.emptyState(root, x, y, w, h, dev.erebus.client.render.font.Icon.SEARCH, "No results",
                         "Nothing matches “" + screen.search().trim() + "”. Try part of a module or category name.");
             } else {
-                screen.emptyState(root, x, y, w, h, "No " + category.label + " modules yet",
+                screen.emptyState(root, x, y, w, h, category.icon, "No " + category.label + " modules yet",
                         "Modules you add to this category will be listed here, with their settings on the right.");
             }
             return;
@@ -68,7 +73,8 @@ public final class ModulesPage extends Page {
                         selected = m;
                         screen.rebuild();
                     }, m::toggle)
-                    .trailing(() -> category == null ? m.category.label : m.keybind.isBound() ? m.keybind.keyName() : null));
+                    .trailing(() -> category == null ? m.category.label : m.keybind.isBound() ? m.keybind.keyName() : m.info())
+                    .tooltip(m.description));
             ry += 21;
         }
 
@@ -80,8 +86,20 @@ public final class ModulesPage extends Page {
         int py = y + 12;
         py = screen.paneHeader(pane, px, py, pw, m.name, () -> m.category.label, m::isEnabled, m::setEnabled);
         py = screen.paragraph(pane, px, py, pw, m.description);
+        if (!m.actions().isEmpty()) {
+            int bx = px;
+            for (Module.Action a : m.actions()) {
+                int bw = dev.erebus.client.render.font.Text.width(a.label()) + 34;
+                pane.add(new dev.erebus.client.gui.widget.Button(bx, py, bw, 18, a.label(), dev.erebus.client.gui.widget.Button.Style.PRIMARY, () -> {
+                    screen.onClose();
+                    a.run().run();
+                }).icon(dev.erebus.client.render.font.Icon.MAP));
+                bx += bw + 6;
+            }
+            py += 28;
+        }
         if (!m.settings().isEmpty()) {
-            py = SettingsBuilder.section(pane, "Settings", px, py, pw);
+            if (SettingsBuilder.startsUngrouped(m.settings())) py = SettingsBuilder.section(pane, "Settings", px, py, pw);
             py = SettingsBuilder.build(pane, m.settings(), px, py, pw, DashboardScreen.W, DashboardScreen.H, screen::rebuild) + 8;
         }
         py = SettingsBuilder.section(pane, "Controls", px, py, pw);

@@ -77,6 +77,8 @@ public final class DashboardScreen extends UiScreen {
     }
 
     public void show(Page page) {
+        if (page != current) pageIn.snap(0f);
+        pageIn.target(1f);
         current = page;
         lastPageId = page.id();
         search = "";
@@ -114,11 +116,12 @@ public final class DashboardScreen extends UiScreen {
     protected void build() {
         int brandW = 110;
         searchField = root.add(new TextField(brandW + 14, 6, 230, 18, search, "Search modules", 40)
+                .icon(dev.erebus.client.render.font.Icon.SEARCH)
                 .onChange(s -> {
                     search = s;
                     rebuild();
                 }));
-        root.add(new Button(W - 26, 6, 18, 18, "x", Button.Style.GHOST, this::onClose));
+        root.add(new Button(W - 26, 6, 18, 18, "", Button.Style.GHOST, this::onClose).icon(dev.erebus.client.render.font.Icon.CLOSE));
 
         // sidebar
         int sy = TOP + 8;
@@ -127,9 +130,32 @@ public final class DashboardScreen extends UiScreen {
         sy += 6;
         sy = sideLabel("Client", sy);
         for (Page p : clientPages) sy = sideItem(p, sy);
+        root.add(new Button(8, H - 28, SIDE - 16, 20, "Open map", Button.Style.SECONDARY, () -> {
+            onClose();
+            dev.erebus.client.module.world.MapModule.openFullMap();
+        }).icon(dev.erebus.client.render.font.Icon.MAP));
 
         Page page = search.isBlank() ? current : searchPage;
-        page.build(root, SIDE, TOP, W - SIDE, H - TOP);
+        SlideIn content = root.add(new SlideIn());
+        page.build(content, SIDE, TOP, W - SIDE, H - TOP);
+    }
+
+    private final Anim pageIn = new Anim(1f, 14f);
+
+    /** Page content, sliding in a few pixels when the page changes. */
+    private final class SlideIn extends Container {
+        @Override
+        public void render(Ui ui, int mx, int my) {
+            float off = (1f - pageIn.update(ui.dt)) * 10f;
+            if (off < 0.05f) {
+                super.render(ui, mx, my);
+                return;
+            }
+            ui.g.pose().pushMatrix();
+            ui.g.pose().translate(off, 0);
+            super.render(ui, mx - Math.round(off), my);
+            ui.g.pose().popMatrix();
+        }
     }
 
     @Override
@@ -174,7 +200,8 @@ public final class DashboardScreen extends UiScreen {
                 ui.round(x, y, width, height, r, Colors.mulAlpha(ui.theme.hover(), h));
             }
             int color = active ? ui.theme.text() : Colors.lerp(ui.theme.dim(), ui.theme.text(), h * 0.7f);
-            ui.text(page.label(), x + 9, Ui.centerY(y, height), color);
+            ui.icon(page.icon(), x + 8, y + (height - 8) / 2f, 8, active ? ui.theme.accent() : Colors.lerp(ui.theme.dim(), ui.theme.accent(), h * 0.6f));
+            ui.text(page.label(), x + 22, Ui.centerY(y, height), color);
             String badge = page.badge();
             if (badge != null) ui.textRight(badge, right() - 7, Ui.centerY(y, height), Colors.mulAlpha(ui.theme.dim(), 0.9f));
         }
@@ -218,21 +245,23 @@ public final class DashboardScreen extends UiScreen {
 
     /** Centered message for pages with nothing to list yet. */
     public void emptyState(Container into, int x, int y, int w, int h, String title, String body) {
+        emptyState(into, x, y, w, h, dev.erebus.client.render.font.Icon.DOTS, title, body);
+    }
+
+    public void emptyState(Container into, int x, int y, int w, int h, dev.erebus.client.render.font.Icon icon, String title, String body) {
         into.add(new Drawable(x, y, w, h, (ui, self, mx, my) -> {
-            List<net.minecraft.util.FormattedCharSequence> lines = ui.wrap(body, Math.min(260, self.width - 40));
+            List<String> lines = ui.wrap(body, Math.min(260, self.width - 40));
             int blockH = 30 + 16 + lines.size() * 11;
             int top = self.y + (self.height - blockH) / 2;
             int cx = self.x + self.width / 2;
             int r = ui.smallRadius();
             ui.round(cx - 13, top, 26, 26, r + 2, ui.theme.track());
             ui.border(cx - 13, top, 26, 26, r + 2, ui.theme.border());
-            ui.round(cx - 7, top + 7, 14, 3, 1, ui.theme.accent());
-            ui.round(cx - 7, top + 12, 10, 3, 1, Colors.mulAlpha(ui.theme.accent(), 0.6f));
-            ui.round(cx - 7, top + 17, 12, 3, 1, Colors.mulAlpha(ui.theme.accent(), 0.35f));
+            ui.icon(icon, cx - 5.5f, top + 7, 12, ui.theme.accent());
             ui.textCentered(title, cx, top + 36, ui.theme.text());
             int ly = top + 52;
-            for (var line : lines) {
-                ui.g.drawString(ui.font, line, cx - ui.font.width(line) / 2, ly, ui.theme.dim(), ui.theme.textShadow);
+            for (String line : lines) {
+                ui.textCentered(line, cx, ly, ui.theme.dim());
                 ly += 11;
             }
         }));
@@ -297,8 +326,9 @@ public final class DashboardScreen extends UiScreen {
         Render2D.roundRectBorder(ui.g, 0, 0, W, H, r, t.border());
 
         // brand
-        int bx = 14;
         int by = Ui.centerY(0, TOP);
+        ui.icon(dev.erebus.client.render.font.Icon.LOGO, 12, by, 8, t.accent());
+        int bx = 25;
         String brand = "EREBUS";
         for (int i = 0; i < brand.length(); i++) {
             String ch = String.valueOf(brand.charAt(i));

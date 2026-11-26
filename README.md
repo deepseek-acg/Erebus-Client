@@ -2,9 +2,8 @@
 
 A utility client for the 6b6t anarchy server, built as a Fabric mod for Minecraft **1.21.11**.
 
-This first version is the user interface only: the dashboard, an editable theme system, and
-a HUD with a drag-and-drop editor. There are no modules yet. The dashboard and the module list
-HUD are ready to show them once they're added.
+It has a dashboard with an editable theme, a HUD with a drag-and-drop editor, its own UI font
+(Erebus Sans), a recorded world map with waypoints, and basefinding modules ported from Nyx.
 
 ## Requirements
 
@@ -31,6 +30,7 @@ To start a development client:
 | Action | Default |
 | --- | --- |
 | Open or close the dashboard | Right Shift (rebind in the dashboard's Client page or in Controls) |
+| Open the map | M |
 | Search modules | Start typing, or Ctrl+F |
 | Toggle a module from the list | Right-click it |
 | Clear a keybind | Right-click the keybind button, or press Backspace while it's listening |
@@ -61,6 +61,40 @@ Built-in elements: Watermark, Module list, Coordinates (with Nether/Overworld co
 facing), Server info (FPS, ping, speed), Nearby players, Supplies (totems, crystals, gapples,
 obsidian, XP bottles), Armor, and Notifications.
 
+## Modules
+
+| Module | Category | What it does |
+| --- | --- | --- |
+| Map | World | Records a map of every chunk you load, per server and dimension, and recognises structures (trial chambers, ancient cities, strongholds, monuments, fortresses, bastions, end cities and more) from their blocks. On by default. |
+| Stash ESP | Basefinding | Outlines and tracers to storage and other base giveaways (chests, shulkers, ender chests, furnaces, villagers, item frames, chest minecarts...). Alerts when an area looks like a base or a stash, marks it on the map and logs it to `erebus/finds.txt`. |
+| Player Blocks | Basefinding | Highlights blocks the world never generates (concrete, shulkers, beacons, mineral blocks, redstone parts...) and building materials where they don't belong, skipping natural structures and biomes where they occur naturally. Lets Stash ESP tell bases from stashes. |
+| Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
+| Logout Spots | Render | Marks where players were standing when they logged out, with name, health and how long ago. |
+
+Map, Stash ESP, Player Blocks, Old Chunks and Logout Spots are ported from Nyx and adapted to
+1.21.11. Compared with Nyx: the minimap is a HUD element you can place anywhere, there are personal
+waypoints (on the maps and in the world), finds are listed in the map's sidebar where you can
+highlight any of them in the world, world labels are drawn as crisp HUD text, and Stash ESP's
+"Silent Mode" confidence scoring became a plain "Dim lone blocks" option. Nyx's team map sharing,
+navigator integration and editable block lists were not ported.
+
+## Map
+
+Press M. Drag to move, scroll to zoom toward the cursor, Space to jump back to yourself, Tab for
+the sidebar, G for the chunk grid. Right-click anywhere to add a waypoint, center or copy
+coordinates; right-click a base, stash or structure to highlight it in the world, mark it
+explored, or forget it. The sidebar lists everything found (closest first) and your waypoints,
+which you can rename in place.
+
+## Font
+
+Erebus Sans is the client's UI font: a renamed derivative of [Geist](https://vercel.com/font) by
+Vercel, subset for the client, with tabular digits by default (so numbers on the HUD don't
+jitter) and a set of UI icons added in the Private Use Area. It is drawn by the client's own
+renderer, which rasterizes glyphs with stb_truetype at the exact on-screen pixel size, so text stays
+sharp and smoothly anti-aliased at every GUI scale. It can be switched off in Theme. Rebuild it
+with `tools/build_font.py`. Licensed under the SIL Open Font License 1.1 (`erebus/font/OFL.txt`).
+
 ## Configuration
 
 Settings are saved to `config/erebus/` when you close the dashboard or the game:
@@ -68,12 +102,18 @@ Settings are saved to `config/erebus/` when you close the dashboard or the game:
 - `theme.json`: base preset, colors and effects
 - `hud.json`: element visibility, positions and settings
 - `client.json`: client preferences
+- `modules.json`: which modules are on, their keybinds and settings
 
-## Adding modules (next step)
+Maps live in `.minecraft/erebus/maps/<server>/<dimension>/`: 512x512-block PNG tiles, markers and
+waypoints.
 
-Extend `dev.erebus.client.module.Module`, add settings with `add(...)`, and register the instance
-with `Erebus.modules().register(...)` during client init. The module then shows up in its
-category, in search, in the module list HUD and in the keybind system automatically.
+## Adding modules
+
+Extend `dev.erebus.client.module.Module`, add settings with `add(...)` (use `group("...")` to
+start a new section), override `onTick`, `onRenderWorld` (draw with Minecraft's `Gizmos`) or
+`onRenderOverlay` (2D, with `Projection` for world positions), and register it in
+`dev.erebus.client.module.Modules`. It then shows up in its category, in search, in the module
+list HUD and in the keybind system, and its settings are saved automatically.
 
 To preview the dashboard with placeholder modules (no behavior), run
 `./gradlew runClient -PpreviewModules`, or start any client with `-Derebus.previewModules=true`.
@@ -89,10 +129,14 @@ src/main/java/dev/erebus/client/
     dashboard/           dashboard screen and pages
     hud/                 HUD editor screen
   hud/                   HUD element base, manager and built-in elements
+  map/                   map tiles and markers (MapStore), waypoints, map renderer
+  gui/map/               full-screen map
   theme/                 theme model and presets
   setting/               setting types shared by modules and HUD elements
-  module/                module base class and manager (no modules yet)
-  render/                2D drawing primitives (rounded rects, borders, shadows, gradients)
+  module/                module base class, manager and modules (world/, basefinding/, render/)
+  render/                2D drawing primitives, world-to-screen projection
+  render/font/           Erebus Sans renderer (stb_truetype glyph atlases) and icons
+tools/build_font.py      builds Erebus Sans from Geist
   config/                JSON persistence
   notify/                toast notifications
 ```

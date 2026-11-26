@@ -35,6 +35,11 @@ public final class ThemePage extends Page {
     }
 
     @Override
+    public dev.erebus.client.render.font.Icon icon() {
+        return dev.erebus.client.render.font.Icon.DROP;
+    }
+
+    @Override
     public String label() {
         return "Theme";
     }
@@ -101,6 +106,11 @@ public final class ThemePage extends Page {
             t.blur = v;
             t.markModified();
         });
+        py = toggle(pane, px, py, pw, "Erebus Sans font", () -> t.customFont, v -> {
+            t.customFont = v;
+            t.markModified();
+            screen.rebuild();
+        });
         py = toggle(pane, px, py, pw, "Text shadow", () -> t.textShadow, v -> {
             t.textShadow = v;
             t.markModified();
@@ -117,8 +127,10 @@ public final class ThemePage extends Page {
 
     private void apply(Theme t, ThemePreset p) {
         boolean animations = t.animations;
+        boolean font = t.customFont;
         t.apply(p);
         t.setAnimations(animations);
+        t.customFont = font;
         Notifications.info("Theme", p.label + " applied");
     }
 

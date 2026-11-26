@@ -21,6 +21,7 @@ public final class Erebus {
     private static final ClientSettings CLIENT = new ClientSettings();
     private static final ConfigManager CONFIG = new ConfigManager();
     private static KeyMapping menuKey;
+    private static KeyMapping mapKey;
 
     private Erebus() {
     }
@@ -55,5 +56,13 @@ public final class Erebus {
 
     static void setMenuKey(KeyMapping key) {
         menuKey = key;
+    }
+
+    public static KeyMapping mapKey() {
+        return mapKey;
+    }
+
+    static void setMapKey(KeyMapping key) {
+        mapKey = key;
     }
 }

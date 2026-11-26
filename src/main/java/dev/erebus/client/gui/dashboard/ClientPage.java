@@ -29,6 +29,11 @@ public final class ClientPage extends Page {
     }
 
     @Override
+    public dev.erebus.client.render.font.Icon icon() {
+        return dev.erebus.client.render.font.Icon.SLIDERS;
+    }
+
+    @Override
     public String label() {
         return "Client";
     }
@@ -69,17 +74,20 @@ public final class ClientPage extends Page {
         py = screen.paragraph(pane, px, py + 2, pw, "Menu scale applies the next time you open the menu.");
 
         py = SettingsBuilder.section(pane, "Keybinds", px, py, pw);
-        screen.label(pane, px, py, pw - 110, SettingsBuilder.ROW, "Open menu");
-        KeyMapping menu = Erebus.menuKey();
-        pane.add(new KeybindButton(px + pw - 96, py + 1, 96, 16,
-                () -> menu == null ? KeybindSetting.NONE : KeyBindingHelper.getBoundKeyOf(menu).getValue(),
-                key -> {
-                    if (menu == null) return;
-                    menu.setKey(key == KeybindSetting.NONE ? InputConstants.UNKNOWN : InputConstants.Type.KEYSYM.getOrCreate(key));
-                    KeyMapping.resetMapping();
-                    screen.minecraftOptionsSave();
-                }));
-        py += SettingsBuilder.ROW + 4;
+        for (Object[] kb : new Object[][]{{"Open menu", Erebus.menuKey()}, {"Open map", Erebus.mapKey()}}) {
+            KeyMapping mapping = (KeyMapping) kb[1];
+            screen.label(pane, px, py, pw - 110, SettingsBuilder.ROW, (String) kb[0]);
+            pane.add(new KeybindButton(px + pw - 96, py + 1, 96, 16,
+                    () -> mapping == null ? KeybindSetting.NONE : KeyBindingHelper.getBoundKeyOf(mapping).getValue(),
+                    key -> {
+                        if (mapping == null) return;
+                        mapping.setKey(key == KeybindSetting.NONE ? InputConstants.UNKNOWN : InputConstants.Type.KEYSYM.getOrCreate(key));
+                        KeyMapping.resetMapping();
+                        screen.minecraftOptionsSave();
+                    }));
+            py += SettingsBuilder.ROW;
+        }
+        py += 4;
         pane.add(new Drawable(px, py, pw, 12, (ui, self, mx, my) ->
                 ui.text("Right-click a keybind to clear it.", self.x, self.y, ui.theme.dim())));
     }

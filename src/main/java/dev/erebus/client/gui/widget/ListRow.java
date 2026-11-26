@@ -22,6 +22,12 @@ public final class ListRow extends Widget {
     private Supplier<String> trailing = () -> null;
     private IntSupplier[] swatches = new IntSupplier[0];
     private final Anim hover = new Anim(0f, 20f);
+    private String tooltip;
+
+    public ListRow tooltip(String text) {
+        this.tooltip = text;
+        return this;
+    }
 
     public ListRow(int x, int y, int w, int h, String label, BooleanSupplier selected, BooleanSupplier enabled,
                    Runnable onSelect, Runnable onSecondary) {
@@ -49,6 +55,7 @@ public final class ListRow extends Widget {
     public void render(Ui ui, int mx, int my) {
         boolean hot = contains(mx, my);
         if (hot) ui.cursor(CursorTypes.POINTING_HAND);
+        if (hot && tooltip != null) ui.tooltip(this, tooltip);
         hover.target(hot ? 1f : 0f);
         float h = hover.update(ui.dt);
         boolean sel = selected.getAsBoolean();

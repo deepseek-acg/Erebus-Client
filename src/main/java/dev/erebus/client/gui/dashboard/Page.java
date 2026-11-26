@@ -14,6 +14,11 @@ public abstract class Page {
 
     public abstract String label();
 
+    /** Sidebar icon. */
+    public dev.erebus.client.render.font.Icon icon() {
+        return dev.erebus.client.render.font.Icon.DOTS;
+    }
+
     /** Small text at the right of the sidebar item, or null. */
     public String badge() {
         return null;

@@ -76,9 +76,9 @@ public final class SuppliesElement extends HudElement {
             int color = n == 0 ? dev.erebus.client.theme.Theme.BAD : 0xFFFFFFFF;
             if (vertical) {
                 int tx = alignRight() ? ix - 4 - ui.width(count) : ix + 20;
-                ui.g.drawString(ui.font, count, tx, iy + 4, color, true);
+                ui.textShadowed(count, tx, iy + 4, color, true);
             } else {
-                ui.g.drawString(ui.font, count, ix + 17 - ui.width(count), iy + 9, color, true);
+                ui.textShadowed(count, ix + 17 - ui.widthBold(count), iy + 9, color, true);
             }
         }
     }

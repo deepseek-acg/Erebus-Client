@@ -15,6 +15,12 @@ public class Button extends Widget {
     private Style style;
     private Supplier<Boolean> active = () -> false;
     private final Anim hover = new Anim(0f, 20f);
+    private dev.erebus.client.render.font.Icon icon;
+
+    public Button icon(dev.erebus.client.render.font.Icon icon) {
+        this.icon = icon;
+        return this;
+    }
 
     public Button(int x, int y, int w, int h, String label, Style style, Runnable onClick) {
         this(x, y, w, h, () -> label, style, onClick);
@@ -62,8 +68,18 @@ public class Button extends Widget {
             }
         }
         ui.round(x, y, width, height, r, bg);
-        String text = ui.ellipsize(label.get(), width - 8);
-        ui.textCentered(text, x + width / 2, Ui.centerY(y, height), fg);
+        String text = label.get();
+        if (icon != null && text.isEmpty()) {
+            ui.icon(icon, x + width / 2f - 4f, y + (height - 8) / 2f, 8, fg);
+        } else if (icon != null) {
+            text = ui.ellipsize(text, width - 22);
+            int tw = ui.width(text) + 12;
+            int tx = x + (width - tw) / 2;
+            ui.icon(icon, tx, y + (height - 8) / 2f, 8, fg);
+            ui.text(text, tx + 12, Ui.centerY(y, height), fg);
+        } else {
+            ui.textCentered(ui.ellipsize(text, width - 8), x + width / 2, Ui.centerY(y, height), fg);
+        }
     }
 
     @Override

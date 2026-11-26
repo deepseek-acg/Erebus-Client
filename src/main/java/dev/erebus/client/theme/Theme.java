@@ -25,6 +25,8 @@ public final class Theme {
     public boolean blur;
     public boolean textShadow;
     public boolean animations = true;
+    /** Use Erebus Sans instead of Minecraft's font. */
+    public boolean customFont = true;
 
     public Theme() {
         apply(ThemePreset.VOID);

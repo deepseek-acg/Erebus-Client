@@ -18,6 +18,8 @@ public abstract class Setting<T> {
     protected T value;
     private Consumer<T> onChange;
     private BooleanSupplier visible = () -> true;
+    /** Section the setting is listed under in the dashboard; null = the default section. */
+    public String group;
 
     protected Setting(String name, String description, T defaultValue) {
         this.id = name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_").replaceAll("^_|_$", "");

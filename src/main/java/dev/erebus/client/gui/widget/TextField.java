@@ -22,6 +22,7 @@ public final class TextField extends Widget {
     private Predicate<Character> filter = c -> true;
     private long focusTime;
     private boolean drawBackground = true;
+    private dev.erebus.client.render.font.Icon icon;
 
     public TextField(int x, int y, int w, int h, String initial, String placeholder, int maxLength) {
         bounds(x, y, w, h);
@@ -44,6 +45,16 @@ public final class TextField extends Widget {
     public TextField filter(Predicate<Character> f) {
         this.filter = f;
         return this;
+    }
+
+    /** An icon drawn at the left edge, with the text starting after it. */
+    public TextField icon(dev.erebus.client.render.font.Icon icon) {
+        this.icon = icon;
+        return this;
+    }
+
+    private int padLeft() {
+        return (drawBackground ? 6 : 0) + (icon != null ? 13 : 0);
     }
 
     public TextField noBackground() {
@@ -72,26 +83,28 @@ public final class TextField extends Widget {
             ui.border(x, y, width, height, r, focused ? ui.theme.accent() : ui.theme.border());
         }
         int pad = drawBackground ? 6 : 0;
-        int innerW = width - pad * 2;
+        int left = padLeft();
+        int innerW = width - pad - left;
         int ty = Ui.centerY(y, height);
+        if (icon != null) ui.icon(icon, x + pad, y + (height - 8) / 2f, 8, focused ? ui.theme.accent() : ui.theme.dim());
 
         int cursorPx = ui.width(text.substring(0, cursor));
         if (cursorPx - scrollX > innerW - 2) scrollX = cursorPx - innerW + 2;
         if (cursorPx - scrollX < 0) scrollX = cursorPx;
         scrollX = Math.max(0, Math.min(scrollX, Math.max(0, ui.width(text) - innerW + 2)));
 
-        ui.g.enableScissor(x + pad, y, x + width - pad + 1, y + height);
+        ui.g.enableScissor(x + left, y, x + width - pad + 1, y + height);
         if (text.isEmpty() && !focused) {
-            ui.text(placeholder, x + pad, ty, Colors.mulAlpha(ui.theme.dim(), 0.85f));
+            ui.text(placeholder, x + left, ty, Colors.mulAlpha(ui.theme.dim(), 0.85f));
         } else {
             if (focused && allSelected && !text.isEmpty()) {
-                ui.rect(x + pad - scrollX, ty - 1, ui.width(text), 10, Colors.withAlpha(ui.theme.accent(), 0x66));
+                ui.rect(x + left - scrollX, ty - 1, ui.width(text), 10, Colors.withAlpha(ui.theme.accent(), 0x66));
             }
-            ui.text(text, x + pad - scrollX, ty, ui.theme.text());
-            if (text.isEmpty()) ui.text(placeholder, x + pad, ty, Colors.mulAlpha(ui.theme.dim(), 0.6f));
+            ui.text(text, x + left - scrollX, ty, ui.theme.text());
+            if (text.isEmpty()) ui.text(placeholder, x + left, ty, Colors.mulAlpha(ui.theme.dim(), 0.6f));
         }
         if (focused && ((System.currentTimeMillis() - focusTime) / 530) % 2 == 0) {
-            ui.rect(x + pad + cursorPx - scrollX, ty - 1, 1, 10, ui.theme.accent());
+            ui.rect(x + left + cursorPx - scrollX, ty - 1, 1, 10, ui.theme.accent());
         }
         ui.g.disableScissor();
     }
@@ -105,8 +118,7 @@ public final class TextField extends Widget {
         ui.focus(this);
         focusTime = System.currentTimeMillis();
         allSelected = false;
-        int pad = drawBackground ? 6 : 0;
-        double local = mx - (x + pad) + scrollX;
+        double local = mx - (x + padLeft()) + scrollX;
         int best = text.length();
         for (int i = 0; i <= text.length(); i++) {
             if (ui.width(text.substring(0, i)) > local) {

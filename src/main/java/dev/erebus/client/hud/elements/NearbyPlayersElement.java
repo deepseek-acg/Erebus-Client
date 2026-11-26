@@ -20,7 +20,7 @@ public final class NearbyPlayersElement extends TextHudElement {
 
     public NearbyPlayersElement() {
         super("nearby", "Nearby players", "Players in render distance, closest first.", true,
-                HAnchor.LEFT, VAnchor.CENTER, 4, 0, true);
+                HAnchor.LEFT, VAnchor.CENTER, 4, 50, true);
     }
 
     private record Entry(String name, int dist, float hp) {

@@ -35,6 +35,11 @@ public final class ConfigManager {
         read("theme.json", this::loadTheme);
         read("hud.json", this::loadHud);
         read("client.json", json -> loadSettings(Erebus.client().all(), json));
+        java.util.Set<String> loaded = new java.util.HashSet<>();
+        read("modules.json", json -> loadModules(json, loaded));
+        for (dev.erebus.client.module.Module m : Erebus.modules().all()) {
+            if (!loaded.contains(m.name)) m.setEnabled(m.defaultEnabled(), false);
+        }
         if (Erebus.hud().get("notifications") instanceof NotificationsElement n) n.syncDuration();
     }
 
@@ -42,6 +47,32 @@ public final class ConfigManager {
         write("theme.json", saveTheme());
         write("hud.json", saveHud());
         write("client.json", saveSettings(Erebus.client().all()));
+        write("modules.json", saveModules());
+    }
+
+    // ------------------------------------------------------------------ modules
+
+    private JsonObject saveModules() {
+        JsonObject o = new JsonObject();
+        for (dev.erebus.client.module.Module m : Erebus.modules().all()) {
+            JsonObject j = new JsonObject();
+            j.addProperty("enabled", m.isEnabled());
+            j.add("keybind", m.keybind.toJson());
+            j.add("settings", saveSettings(m.settings()));
+            o.add(m.name, j);
+        }
+        return o;
+    }
+
+    private void loadModules(JsonObject o, java.util.Set<String> loaded) {
+        for (dev.erebus.client.module.Module m : Erebus.modules().all()) {
+            if (!o.has(m.name) || !o.get(m.name).isJsonObject()) continue;
+            JsonObject j = o.getAsJsonObject(m.name);
+            if (j.has("settings") && j.get("settings").isJsonObject()) loadSettings(m.settings(), j.getAsJsonObject("settings"));
+            if (j.has("keybind")) m.keybind.fromJson(j.get("keybind"));
+            m.setEnabled(bool(j, "enabled", m.defaultEnabled()), false);
+            loaded.add(m.name);
+        }
     }
 
     // ------------------------------------------------------------------ theme
@@ -60,6 +91,7 @@ public final class ConfigManager {
         o.addProperty("blur", t.blur);
         o.addProperty("textShadow", t.textShadow);
         o.addProperty("animations", t.animations);
+        o.addProperty("customFont", t.customFont);
         return o;
     }
 
@@ -79,6 +111,7 @@ public final class ConfigManager {
         t.blur = bool(o, "blur", t.blur);
         t.textShadow = bool(o, "textShadow", t.textShadow);
         t.setAnimations(bool(o, "animations", true));
+        t.customFont = bool(o, "customFont", true);
         t.setModified(bool(o, "modified", false));
     }
 
@@ -124,13 +157,13 @@ public final class ConfigManager {
 
     // ------------------------------------------------------------------ settings
 
-    private static JsonObject saveSettings(List<Setting<?>> settings) {
+    private static JsonObject saveSettings(List<? extends Setting<?>> settings) {
         JsonObject o = new JsonObject();
         for (Setting<?> s : settings) o.add(s.id, s.toJson());
         return o;
     }
 
-    private static void loadSettings(List<Setting<?>> settings, JsonObject o) {
+    private static void loadSettings(List<? extends Setting<?>> settings, JsonObject o) {
         for (Setting<?> s : settings) {
             if (o.has(s.id)) s.fromJson(o.get(s.id));
         }

@@ -28,9 +28,9 @@ public final class HudManager {
 
     static {
         PRESETS.put("PvP", Set.of("watermark", "modules", "nearby", "supplies", "armor", "info", "notifications"));
-        PRESETS.put("Travel", Set.of("watermark", "modules", "coordinates", "info", "notifications"));
-        PRESETS.put("Base", Set.of("watermark", "modules", "coordinates", "nearby", "notifications"));
-        PRESETS.put("All", Set.of("watermark", "modules", "coordinates", "info", "nearby", "supplies", "armor", "notifications"));
+        PRESETS.put("Travel", Set.of("watermark", "modules", "coordinates", "info", "notifications", "minimap"));
+        PRESETS.put("Base", Set.of("watermark", "modules", "coordinates", "nearby", "notifications", "minimap", "legend"));
+        PRESETS.put("All", Set.of("watermark", "modules", "coordinates", "info", "nearby", "supplies", "armor", "notifications", "minimap", "legend"));
     }
 
     private final List<HudElement> elements = new ArrayList<>();
@@ -50,6 +50,8 @@ public final class HudManager {
         register(new SuppliesElement());
         register(new ArmorElement());
         register(new NotificationsElement());
+        register(new dev.erebus.client.hud.elements.MinimapElement());
+        register(new dev.erebus.client.hud.elements.FinderLegendElement());
     }
 
     public void register(HudElement e) {
@@ -133,6 +135,7 @@ public final class HudManager {
         Minecraft mc = Minecraft.getInstance();
         if (mc.options.hideGui || mc.screen instanceof HudEditorScreen || mc.getDebugOverlay().showDebugScreen()) return;
         ui.begin(g);
+        dev.erebus.client.Erebus.modules().renderOverlay(ui);
         int sw = g.guiWidth();
         int sh = g.guiHeight();
         for (HudElement e : elements) {

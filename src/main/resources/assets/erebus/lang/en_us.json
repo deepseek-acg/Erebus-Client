@@ -2,5 +2,6 @@
   "key.category.erebus.main": "Erebus",
   "key.erebus.open_menu": "Open Erebus menu",
   "erebus.screen.dashboard": "Erebus",
-  "erebus.screen.hud_editor": "HUD editor"
+  "erebus.screen.hud_editor": "HUD editor",
+  "key.erebus.open_map": "Open map"
 }

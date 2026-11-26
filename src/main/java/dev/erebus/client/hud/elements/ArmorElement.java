@@ -63,7 +63,7 @@ public final class ArmorElement extends HudElement {
                 int pct = Math.round(100f * (s.getMaxDamage() - s.getDamageValue()) / s.getMaxDamage());
                 int c = pct >= 70 ? Theme.GOOD : pct >= 40 ? Theme.WARN : Theme.BAD;
                 String t = pct + "%";
-                ui.g.drawString(ui.font, t, ix + 8 - ui.width(t) / 2, iy + 17, c, true);
+                ui.textShadowed(t, ix + 8 - ui.width(t) / 2, iy + 17, c, false);
             }
         }
     }
