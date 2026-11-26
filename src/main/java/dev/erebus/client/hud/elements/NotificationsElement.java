@@ -23,7 +23,7 @@ public final class NotificationsElement extends HudElement {
 
     public NotificationsElement() {
         super("notifications", "Notifications", "Toasts when modules toggle or the client has something to tell you.", true,
-                HAnchor.RIGHT, VAnchor.BOTTOM, 4, 52);
+                HAnchor.RIGHT, VAnchor.BOTTOM, 4, 84);
     }
 
     public void syncDuration() {

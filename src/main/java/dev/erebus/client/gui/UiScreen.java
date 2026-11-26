@@ -164,6 +164,7 @@ public abstract class UiScreen extends net.minecraft.client.gui.screens.Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        ui.takeSwallowChar();
         Widget focused = ui.focused();
         if (focused != null && focused.keyPressed(ui, event.key(), event.modifiers())) return true;
         if (ui.popover() != null && event.key() == GLFW.GLFW_KEY_ESCAPE) {
@@ -181,6 +182,7 @@ public abstract class UiScreen extends net.minecraft.client.gui.screens.Screen {
 
     @Override
     public boolean charTyped(CharacterEvent event) {
+        if (ui.takeSwallowChar()) return true;
         Widget focused = ui.focused();
         if (focused != null && focused.charTyped(ui, event.codepointAsString())) return true;
         return onChar(event.codepointAsString()) || super.charTyped(event);

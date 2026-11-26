@@ -20,6 +20,17 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
 
+loom {
+    runs {
+        client {
+            // ./gradlew runClient -PpreviewModules  -> placeholder modules for UI work
+            if (project.hasProperty('previewModules')) {
+                vmArg '-Derebus.previewModules=true'
+            }
+        }
+    }
+}
+
 processResources {
     inputs.property "version", project.version
     filesMatching("fabric.mod.json") {

@@ -51,7 +51,8 @@ To start a development client:
 
 Drag elements to move them. Positions snap to a 4px grid, to screen edges and to the horizontal
 center; hold Alt to move freely. Arrow keys nudge the selected element (Shift for bigger steps).
-Right-click or press Delete to hide an element.
+Right-click or press Delete to hide an element. The toolbar gets out of the way while you drag;
+press H to hide it entirely.
 
 Each element is stored relative to the nearest screen edge, so layouts keep their place when the
 window size or GUI scale changes.
@@ -74,8 +75,8 @@ Extend `dev.erebus.client.module.Module`, add settings with `add(...)`, and regi
 with `Erebus.modules().register(...)` during client init. The module then shows up in its
 category, in search, in the module list HUD and in the keybind system automatically.
 
-To preview the dashboard with placeholder modules (no behavior), start the client with
-`-Derebus.previewModules=true`.
+To preview the dashboard with placeholder modules (no behavior), run
+`./gradlew runClient -PpreviewModules`, or start any client with `-Derebus.previewModules=true`.
 
 ## Project layout
 

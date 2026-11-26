@@ -99,6 +99,23 @@ public final class Ui {
         return popover;
     }
 
+    private boolean swallowChar;
+
+    /**
+     * Drops the character event that follows the current key press. Used when a key was consumed
+     * as a keybind, so it doesn't also get typed into a text field.
+     */
+    public void swallowNextChar() {
+        swallowChar = true;
+    }
+
+    /** Returns true once if the next character should be dropped, and resets the flag. */
+    public boolean takeSwallowChar() {
+        boolean s = swallowChar;
+        swallowChar = false;
+        return s;
+    }
+
     public void cursor(CursorType type) {
         g.requestCursor(type);
     }

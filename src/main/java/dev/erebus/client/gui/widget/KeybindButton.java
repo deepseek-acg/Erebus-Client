@@ -55,6 +55,7 @@ public final class KeybindButton extends Widget {
             setter.accept(key);
             ui.focus(null);
         }
+        ui.swallowNextChar();
         return true;
     }
 }

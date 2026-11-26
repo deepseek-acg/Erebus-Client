@@ -19,7 +19,7 @@ public final class ArmorElement extends HudElement {
 
     public ArmorElement() {
         super("armor", "Armor", "Your armor pieces and how much durability is left.", true,
-                HAnchor.CENTER, VAnchor.BOTTOM, 150, 2);
+                HAnchor.RIGHT, VAnchor.BOTTOM, 4, 46);
     }
 
     private ItemStack[] preview() {

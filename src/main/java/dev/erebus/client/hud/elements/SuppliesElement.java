@@ -26,7 +26,7 @@ public final class SuppliesElement extends HudElement {
 
     public SuppliesElement() {
         super("supplies", "Supplies", "Totems, crystals, gapples and other items you carry.", true,
-                HAnchor.CENTER, VAnchor.BOTTOM, -150, 2);
+                HAnchor.LEFT, VAnchor.BOTTOM, 4, 46);
         supply("Totems", Items.TOTEM_OF_UNDYING, 23);
         supply("Crystals", Items.END_CRYSTAL, 448);
         supply("Gapples", Items.ENCHANTED_GOLDEN_APPLE, 61);

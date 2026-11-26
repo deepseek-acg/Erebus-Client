@@ -318,7 +318,8 @@ public final class DashboardScreen extends UiScreen {
             ui.focus(searchField);
             return true;
         }
-        if (Erebus.client().menuKeyCloses.get() && Erebus.menuKey() != null
+        // only when nothing has focus: Right Shift is also how people type capitals in the search box
+        if (ui.focused() == null && Erebus.client().menuKeyCloses.get() && Erebus.menuKey() != null
                 && KeyBindingHelper.getBoundKeyOf(Erebus.menuKey()).getValue() == key) {
             onClose();
             return true;

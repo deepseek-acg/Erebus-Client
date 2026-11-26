@@ -37,9 +37,9 @@ public final class SettingsBuilder {
     public static int row(Container into, Setting<?> s, int x, int y, int w, int designW, int designH, Runnable relayout) {
         int cx = x + w - CONTROL_W;
         if (s instanceof NumberSetting n) {
-            into.add(label(x, y, w, s.name, n::format));
-            into.add(new Slider(x, y + 12, w, n::fraction, f -> n.setFraction(f)));
-            return y + 28;
+            into.add(label(x, y + 3, w, s.name, n::format));
+            into.add(new Slider(x, y + 15, w, n::fraction, f -> n.setFraction(f)));
+            return y + 31;
         }
         into.add(label(x, y, w - CONTROL_W - 6, s.name, null));
         if (s instanceof BoolSetting b) {

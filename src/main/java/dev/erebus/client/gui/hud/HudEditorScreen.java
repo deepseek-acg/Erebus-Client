@@ -36,6 +36,8 @@ public final class HudEditorScreen extends UiScreen {
     private int grabX;
     private int grabY;
     private int toolbarBottom;
+    private boolean toolbarHidden;
+    private final List<dev.erebus.client.gui.widget.Widget> toolbar = new ArrayList<>();
 
     public HudEditorScreen(Screen parent) {
         super(Component.translatable("erebus.screen.hud_editor"));
@@ -77,37 +79,42 @@ public final class HudEditorScreen extends UiScreen {
         int y = 6;
         int barX = x - 6;
         int barW = total + 12;
-        root.add(new Drawable(barX, y - 4, barW, bh + 8, (ui, self, mx, my) -> {
+        toolbar.clear();
+        toolbar.add(root.add(new Drawable(barX, y - 4, barW, bh + 8, (ui, self, mx, my) -> {
             int r = ui.theme.radius;
             if (ui.theme.shadow) Render2D.shadow(ui.g, self.x, self.y, self.width, self.height, r, 6, 0x80000000);
             ui.round(self.x, self.y, self.width, self.height, r, ui.theme.background());
             ui.border(self.x, self.y, self.width, self.height, r, ui.theme.border());
             ui.textBold("HUD editor", self.x + 8, Ui.centerY(self.y, self.height), ui.theme.text());
-        }));
+        })));
         int bx = x + title;
         for (int i = 0; i < presets.size(); i++) {
             String name = presets.get(i);
-            root.add(new Button(bx, y, widths[i], bh, name, Button.Style.SECONDARY, () -> {
+            toolbar.add(root.add(new Button(bx, y, widths[i], bh, name, Button.Style.SECONDARY, () -> {
                 hud.applyPreset(name);
                 selected = null;
-            }).active(() -> name.equals(hud.preset())));
+            }).active(() -> name.equals(hud.preset()))));
             bx += widths[i] + gap;
         }
         bx += 6;
-        root.add(new Button(bx, y, resetW, bh, "Reset", Button.Style.GHOST, () -> {
+        toolbar.add(root.add(new Button(bx, y, resetW, bh, "Reset", Button.Style.GHOST, () -> {
             hud.resetLayout();
             Notifications.info("HUD", "layout reset");
-        }));
+        })));
         bx += resetW + gap;
-        root.add(new Button(bx, y, doneW, bh, "Done", Button.Style.PRIMARY, this::onClose));
+        toolbar.add(root.add(new Button(bx, y, doneW, bh, "Done", Button.Style.PRIMARY, this::onClose)));
         toolbarBottom = y + bh + 4;
 
-        root.add(new Drawable(0, toolbarBottom + 4, width, 10, (ui, self, mx, my) -> {
-            String hint = dragging != null
-                    ? dragging.name + " · anchored " + dragging.anchorLabel() + " · " + dragging.offX + ", " + dragging.offY
-                    : "Drag to move · Alt: no snapping · Arrows: nudge · Right-click: hide";
-            ui.textCentered(hint, width / 2, self.y, Colors.mulAlpha(ui.theme.text(), 0.85f));
-        }));
+        toolbar.add(root.add(new Drawable(0, toolbarBottom + 4, width, 10, (ui, self, mx, my) ->
+                ui.textCentered("Drag to move · Alt: free move · Arrows: nudge · Right-click: hide · H: toolbar",
+                        width / 2, self.y, Colors.mulAlpha(ui.theme.text(), 0.85f)))));
+    }
+
+    @Override
+    public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
+        // get the toolbar out of the way while dragging, so elements can be placed under it
+        for (dev.erebus.client.gui.widget.Widget w : toolbar) w.visible = !toolbarHidden && dragging == null;
+        super.render(g, mouseX, mouseY, delta);
     }
 
     @Override
@@ -137,6 +144,14 @@ public final class HudEditorScreen extends UiScreen {
             boolean hot = e == hovered || e == selected;
             int outline = hot ? t.accent() : Colors.withAlpha(t.accent(), 0x90);
             Render2D.dashedOutline(ui.g, e.x - 2, e.y - 2, e.width + 4, e.height + 4, outline, 3);
+            if (e == dragging) {
+                String info = "anchored " + e.anchorLabel() + " · " + e.offX + ", " + e.offY;
+                int iw = ui.width(info) + 8;
+                int iy = e.y + e.height + 4 + 11 <= height ? e.y + e.height + 4 : e.y - 30;
+                int ix = Math.max(0, Math.min(width - iw, e.x - 2));
+                ui.round(ix, iy, iw, 11, 2, Colors.withAlpha(0x000000, 0xB0));
+                ui.text(info, ix + 4, iy + 2, t.text());
+            }
             if (hot) {
                 String label = e.name;
                 int lw = ui.width(label) + 8;
@@ -217,6 +232,10 @@ public final class HudEditorScreen extends UiScreen {
 
     @Override
     protected boolean onKey(int key, int modifiers) {
+        if (key == GLFW.GLFW_KEY_H) {
+            toolbarHidden = !toolbarHidden;
+            return true;
+        }
         if (selected == null) return false;
         int step = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0 ? GRID * 2 : 1;
         int dx = 0;
