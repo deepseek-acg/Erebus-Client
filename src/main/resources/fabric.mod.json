@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "erebus",
+  "version": "${version}",
+  "name": "Erebus",
+  "description": "Utility client for 6b6t.",
+  "authors": [
+    "Erebus contributors"
+  ],
+  "license": "All-Rights-Reserved",
+  "icon": "assets/erebus/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.erebus.client.ErebusClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.20.0",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  },
+  "mixins": [
+    "erebus.mixins.json"
+  ]
+}
