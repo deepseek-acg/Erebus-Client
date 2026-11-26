@@ -2,6 +2,7 @@ package dev.erebus.client.module.combat;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.erebus.client.input.Crosshair;
+import dev.erebus.client.input.InputLock;
 import dev.erebus.client.input.InputSim;
 import dev.erebus.client.input.MouseSim;
 import dev.erebus.client.module.Category;
@@ -324,12 +325,16 @@ public abstract class AnchorSequence extends Module {
             return;
         }
         trackStillness();
+        if (sequenceActive() && InputLock.lost(this)) { // something the player triggered took the hands over
+            dropSequence();
+            return;
+        }
         if (sequenceActive() && shouldStop()) {
             endSequence(false);
             return;
         }
         if (!sequenceActive()) {
-            idleTick();
+            if (!InputLock.heldByOther(this)) idleTick();
             return;
         }
         if (++ticksRunning > timeout.intValue()) {
@@ -391,6 +396,8 @@ public abstract class AnchorSequence extends Module {
         startPitch = mc.player.getXRot();
         anchorPos = anchor;
         lookHit = look;
+        if (startedByPlayer()) InputLock.take(this);
+        else if (!InputLock.tryClaim(this)) return false;
         stage = charged ? Stage.SHIELD : (isAnchor ? Stage.CHARGE : Stage.PLACE);
         wait = delay(startDelay);
         standUp(); // a crouched click on an anchor places the held item instead of using the anchor
@@ -848,7 +855,27 @@ public abstract class AnchorSequence extends Module {
         else onSequenceEnd(false);
     }
 
+    /** Whether sequences are started by the player (and may take the input over from an automatic module). */
+    protected boolean startedByPlayer() {
+        return false;
+    }
+
+    /** Ends the sequence without touching the slot or camera, which another module is now driving. */
+    private void dropSequence() {
+        releaseSneak();
+        forcedStand = false;
+        pendingShield = null;
+        aim = null;
+        stage = Stage.DONE;
+        onSequenceEnd(false);
+    }
+
     protected final void endSequence(boolean completed) {
+        if (InputLock.lost(this) && stage != null) {
+            dropSequence();
+            return;
+        }
+        InputLock.release(this);
         releaseSneak();
         if (forcedStand && mc.player != null && InputSim.sneakHeldPhysically()) InputSim.sneak(true);
         forcedStand = false;

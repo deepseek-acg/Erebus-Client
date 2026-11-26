@@ -112,6 +112,28 @@ public final class MouseSim {
 
     private static long returnAt;
 
+    // the player's own mouse movement, measured before anything synthetic is added
+    private static long userMoveAt;
+    private static double userMoveCounts;
+
+    /** Called by the mouse handler with the player's own movement this frame. */
+    public static void noteUserMovement(double dx, double dy) {
+        double c = Math.hypot(dx, dy);
+        if (c == 0) return;
+        long now = System.nanoTime();
+        if (now - userMoveAt > 250_000_000L) userMoveCounts = 0; // a new gesture
+        userMoveCounts += c;
+        userMoveAt = now;
+    }
+
+    /**
+     * True if the player has moved the mouse by more than {@code degrees} of camera turn within the last
+     * {@code millis} milliseconds (whether or not the camera was held at the time).
+     */
+    public static boolean userMoved(double degrees, long millis) {
+        return System.nanoTime() - userMoveAt < millis * 1_000_000L && userMoveCounts * degreesPerCount() > degrees;
+    }
+
     public static boolean overshooting() {
         return active && overshooting;
     }

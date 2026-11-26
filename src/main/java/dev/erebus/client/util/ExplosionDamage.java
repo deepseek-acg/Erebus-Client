@@ -30,6 +30,8 @@ import net.minecraft.world.phys.Vec3;
 public final class ExplosionDamage {
     /** Respawn anchor explosion power. */
     public static final float ANCHOR_POWER = 5f;
+    /** End crystal explosion power. */
+    public static final float CRYSTAL_POWER = 6f;
 
     private static final EquipmentSlot[] ARMOR = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
 
@@ -41,13 +43,18 @@ public final class ExplosionDamage {
      * @param ignoredSolid a block treated as air (an anchor is removed before its blast), or null
      */
     public static float damage(LivingEntity target, Vec3 center, float power, BlockPos extraSolid, BlockPos ignoredSolid) {
+        return damage(target, Vec3.ZERO, center, power, extraSolid, ignoredSolid);
+    }
+
+    /** Like {@link #damage(LivingEntity, Vec3, float, BlockPos, BlockPos)} with the target moved by {@code offset} (a prediction). */
+    public static float damage(LivingEntity target, Vec3 offset, Vec3 center, float power, BlockPos extraSolid, BlockPos ignoredSolid) {
         Minecraft mc = Minecraft.getInstance();
         if (target == null || mc.level == null) return 0;
         if (target instanceof Player p && (p.isCreative() || p.isSpectator())) return 0;
         double radius = power * 2;
-        double dist = Math.sqrt(target.distanceToSqr(center)) / radius;
+        double dist = Math.sqrt(target.position().add(offset).distanceToSqr(center)) / radius;
         if (dist > 1) return 0;
-        double exposure = exposure(center, target.getBoundingBox(), extraSolid, ignoredSolid);
+        double exposure = exposure(center, target.getBoundingBox().move(offset), extraSolid, ignoredSolid);
         double impact = (1 - dist) * exposure;
         float damage = (float) ((impact * impact + impact) / 2.0 * 7.0 * radius + 1);
         return afterReductions(target, damage);
