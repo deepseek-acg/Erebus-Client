@@ -13,12 +13,13 @@ public final class Modules {
 
     public static void registerAll(ModuleManager modules) {
         modules.register(new MapModule());
+        modules.register(new dev.erebus.client.module.world.SeedCracker());
         modules.register(new StashESP());
         modules.register(new PlayerBlocks());
         modules.register(new OldChunks());
         modules.register(new LogoutSpots());
         modules.register(new dev.erebus.client.module.combat.AutoSafeAnchor());
         modules.register(new dev.erebus.client.module.combat.AnchorAura());
-        modules.register(new dev.erebus.client.module.combat.AutoCrystal());
+        modules.register(new dev.erebus.client.module.combat.CrystalAura());
     }
 }

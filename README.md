@@ -66,12 +66,13 @@ obsidian, XP bottles), Armor, and Notifications.
 | Module | Category | What it does |
 | --- | --- | --- |
 | Map | World | Records a map of every chunk you load, per server and dimension, and recognises structures (trial chambers, ancient cities, strongholds, monuments, fortresses, bastions, end cities and more) from their blocks. On by default. |
+| Seed Cracker | World | Works out the world seed from desert pyramids, jungle temples, swamp huts and buried treasure you come across. Proof of concept for servers with vanilla world generation settings. |
 | Stash ESP | Basefinding | Outlines and tracers to storage and other base giveaways (chests, shulkers, ender chests, furnaces, villagers, item frames, chest minecarts...). Alerts when an area looks like a base or a stash, marks it on the map and logs it to `erebus/finds.txt`. |
 | Player Blocks | Basefinding | Highlights blocks the world never generates (concrete, shulkers, beacons, mineral blocks, redstone parts...) and building materials where they don't belong, skipping natural structures and biomes where they occur naturally. Lets Stash ESP tell bases from stashes. |
 | Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
 | Logout Spots | Render | Marks where players were standing when they logged out, with name, health and how long ago. |
 | Auto Safe Anchor | Combat | One press: places a respawn anchor where you look, charges it, puts a shield block between you and the blast, detonates it, then turns off. Ported from Mist. |
-| Auto Crystal | Combat | Places and breaks end crystals on nearby opponents, placing obsidian only when it clearly pays off. Ported from Mist's CrystalAura. |
+| Crystal Aura | Combat | Places and breaks end crystals on nearby opponents as fast as the server answers, sticking to one spot and placing obsidian only when it clearly pays off. Ported from Mist. |
 | Anchor Aura | Combat | Runs the same sequence by itself at whichever nearby spot hurts an opponent most, never inside anyone's hitbox and never at a spot that could kill you. Ported from Mist. |
 
 Map, Stash ESP, Player Blocks, Old Chunks and Logout Spots are ported from Nyx and adapted to
@@ -83,7 +84,7 @@ navigator integration and editable block lists were not ported.
 
 ## Combat modules and simulated input
 
-Auto Safe Anchor, Anchor Aura and Auto Crystal never build interactions or packets themselves. Everything they do
+Auto Safe Anchor, Anchor Aura and Crystal Aura never build interactions or packets themselves. Everything they do
 is simulated input that the game then handles exactly like a player's:
 
 - the hotbar slot is picked by pressing its number key (`input/InputSim`),
@@ -106,7 +107,7 @@ went off. Every part of it can be tuned:
 
 | Group | Settings |
 | --- | --- |
-| Timing | Start delay; delays after placing, charging and shielding; delay when no shield is placed; swap delay (or click in the same tick as the slot switch); settle time before a click; crouch and stand delays; random extra ticks with a uniform or Gaussian spread; detonate check; charge and detonate attempts; timeout. |
+| Timing | Start delay; delays after placing, charging and shielding; delay when no shield is placed; swap delay (or click in the same tick as the slot switch); settle time before a click; crouch and stand delays; random extra ticks with a uniform or Gaussian spread; detonate retry; charge and detonate attempts; timeout. Delays default to 0 and the sequence ends the moment the anchor is gone. |
 | Camera | Max and min turn speed, easing, how much the path curves, overshoot chance and amount, aim point on a face (nearest, center or random) and edge margin, holding the camera against your own mouse, looking back afterwards with its own delay and speed. |
 | Shield | Always, only when the blast would reach you (with a damage threshold), or never; shield block (glowstone, obsidian, or any full block in your hotbar); crouch-placing against the anchor; how far to search for a shield spot; retries; whether to detonate when the shield never went down. |
 | Items | Detonate with an empty slot, a safe item or a fixed slot; swap back to your slot. |
@@ -119,17 +120,34 @@ damage), ignoring unarmored players or names, min damage, max self damage, how m
 counts against a spot, a lethal override, a lower min damage against low-health opponents, re-arm
 delay and randomness, per-spot cooldown, search interval, an optional key to hold for it to run,
 and a chance to take a nearly-as-good spot so cycles don't all look the same. "Target mobs" lets
-you try settings out on a dummy.
+you try settings out on a dummy. Like Crystal Aura it sticks to one spot (see below), and it swaps
+back and looks back only once no new anchor has followed for a moment, not after every anchor.
 
 The three share the camera, hotbar and keys through one lock (`input/InputLock`): only one of them
 clicks at a time, the automatic ones wait for each other, and pressing Auto Safe Anchor's key takes
 over from whatever is running.
 
-### Auto Crystal
+### Crystal Aura
 
 Ported from Mist's CrystalAura, which places obsidian for anyone you knock up and crystals on any
 obsidian near an opponent. Breaking uses the attack key on the crosshair, so a crystal is only
 placed where you could hit it afterwards (entity reach, 3 blocks in survival).
+
+It locks onto one spot and keeps placing and breaking crystals there. The view that places a
+crystal on top of a block also hits the crystal standing on it, so once the camera is on the spot
+nothing has to turn: it breaks a crystal the tick it appears and places the next the tick the old
+one is gone, about one crystal per round trip to the server. Delays all default to 0.
+
+It only moves to another spot when the current one genuinely stops working, instead of chasing the
+best spot every crystal (an opponent knocked up above you otherwise drags it around the whole time):
+
+- the spot would do less than **Keep above** damage (4),
+- the opponent is more than **Max angle** away from it as seen from you (45°),
+- another spot does at least **Switch if better by** more damage (5), checked every
+  **Recheck every** ticks (10),
+- or it becomes unsafe, out of reach, or blocked.
+
+Turning **Stick to spot** off goes back to the best spot every crystal.
 
 Places less obsidian:
 
@@ -138,7 +156,7 @@ Places less obsidian:
 - A new block is only placed if the crystal still does enough damage where the opponent will be by
   the time it goes down (their movement is extrapolated over the whole obsidian, crystal and break
   sequence), and it's checked again right before the crystal is placed.
-- Obsidian it placed earlier is preferred, so one block is reused for many crystals.
+- Because it sticks to a spot, one block is reused for many crystals.
 - A cap on blocks per time window (3 per 10 s by default), the choice between never, after a hit
   and when needed, and avoiding the opponent's path and landing spot.
 - A spot where a placement failed is skipped for a while instead of retried.
@@ -167,6 +185,31 @@ modules.
 Damage is estimated with vanilla's explosion formula, including block exposure, armor, toughness,
 Resistance and Protection/Blast Protection (`util/ExplosionDamage`). Mist's silent rotations,
 session fatigue and server presets were not ported; these turn the real camera.
+
+## Seed Cracker (proof of concept)
+
+Turn it on and travel: it watches the overworld chunks the server sends you for structures whose start
+chunk can be read exactly from their blocks, keeps them per server in `.minecraft/erebus/seeds/`, and
+cracks the seed by itself once it has enough. Nothing is sent to the server.
+
+- **What it reads.** Desert pyramids (the blue terracotta in the middle of the floor), jungle temples
+  (the lever puzzle's sticky pistons), swamp huts (the cauldron next to the crafting table) and buried
+  treasure (a chest at the same spot in its chunk, under sand). Each marker has to sit exactly where
+  one of the structure's four orientations puts it, so player builds don't count.
+- **Low 48 bits.** Structures pick their chunk inside a region with Java's 48-bit random generator,
+  seeded from the seed, the region and a per-structure salt. Each temple's position fixes some low
+  bits outright (24 = 8 x 3 positions per axis), so the low 20 bits are brute-forced against all of
+  them, then the remaining 28 bits for each survivor (`seed/SeedSolver`).
+- **Top 16 bits.** Structures never use them. The server sends a hash of the full seed (the first 8
+  bytes of its SHA-256, which the client uses for biome blending); all 65,536 options are hashed and
+  compared.
+- **Checked twice.** The result is re-checked against every recorded structure with the game's own
+  structure placement code before it's reported.
+
+In testing it found a world's seed from 6 structures (3 desert pyramids, 3 swamp huts) in about 7
+seconds; buried treasure cuts that to 3 or 4 temples. It's a proof of concept for vanilla settings:
+servers that change structure salts (`spigot.yml`) or hide the hashed seed need more work. Actions in
+the dashboard: Crack now, Copy seed, Forget this server.
 
 ## Map
 
@@ -227,6 +270,7 @@ src/main/java/dev/erebus/client/
   render/                2D drawing primitives, world-to-screen projection
   render/font/           Erebus Sans renderer (stb_truetype glyph atlases) and icons
   input/                 simulated mouse and key input, crosshair prediction
+  seed/                  seed cracking: structure scanner, solver, per-server data
   util/                  explosion damage estimate
   config/                JSON persistence
   notify/                toast notifications
