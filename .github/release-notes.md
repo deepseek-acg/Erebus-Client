@@ -2,6 +2,9 @@ Erebus for Minecraft **1.21.11** (Fabric).
 
 **Install:** put the `erebus-<version>.jar` below in your `mods` folder together with [Fabric API](https://modrinth.com/mod/fabric-api) for 1.21.11. Requires Fabric Loader 0.20+ and Java 21. Open the dashboard with Right Shift.
 
+### New in 0.6.4
+- **Mineshaft rooms are checked against the seed**: the game rolls each mineshaft's start room size from the seed, so Seed Cracker now measures it (8 to 13 blocks each way) and checks it. A room that isn't really a mineshaft's start almost never has the right size, so it's set aside instead of spoiling the crack, and a real one counts for more. Chat shows the size ("Mineshaft (room 9x12)"). Several rooms in what looks like one big network are separate mineshafts whose corridors ran together, so each one counts.
+
 ### New in 0.6.3
 - **Mineshafts are harder to fake**: a mineshaft's start room has a dome of air above it, and that's now required, so a room a player dug (with a flat ceiling) next to rails or wooden supports doesn't count as one.
 - **A misread mineshaft no longer blocks the seed**: if nothing fits exactly, up to 2 mineshafts (or other clues that only check a seed) are set aside, and chat says which. Before, one wrong mineshaft could stop it finding anything unless you had 5 or more temples, huts, igloos or outposts.
