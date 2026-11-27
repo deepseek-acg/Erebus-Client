@@ -18,6 +18,7 @@ public final class Modules {
         modules.register(new PlayerBlocks());
         modules.register(new OldChunks());
         modules.register(new LogoutSpots());
+        modules.register(new dev.erebus.client.module.render.Freecam());
         modules.register(new dev.erebus.client.module.combat.AutoSafeAnchor());
         modules.register(new dev.erebus.client.module.combat.AnchorAura());
         modules.register(new dev.erebus.client.module.combat.CrystalAura());

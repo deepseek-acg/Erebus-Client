@@ -441,6 +441,14 @@ public final class MapStore {
         return true;
     }
 
+    /** Whether a structure of this kind is already marked within {@code radius} of (x, z). */
+    public static boolean hasStructure(String label, int x, int z, int radius) {
+        if (context == null) return false;
+        for (Mark a : alerts)
+            if (a.kind().equals("structure") && a.label().equals(label) && Math.abs(a.x() - x) < radius && Math.abs(a.z() - z) < radius) return true;
+        return false;
+    }
+
     /** Forgets every structure marker on this server/dimension's map; returns how many. */
     public static int clearStructures() {
         int before = alerts.size();

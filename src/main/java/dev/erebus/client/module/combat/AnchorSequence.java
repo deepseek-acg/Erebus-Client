@@ -387,6 +387,10 @@ public abstract class AnchorSequence extends Module {
      */
     protected final boolean beginAt(BlockPos anchor, BlockHitResult look) {
         resetSequence();
+        if (dev.erebus.client.module.render.Freecam.active() != null) {
+            abort("Freecam is on");
+            return false;
+        }
         BlockState state = mc.level.getBlockState(anchor);
         boolean isAnchor = state.is(Blocks.RESPAWN_ANCHOR);
         boolean charged = isAnchor && state.getValue(BlockStateProperties.RESPAWN_ANCHOR_CHARGES) > 0;

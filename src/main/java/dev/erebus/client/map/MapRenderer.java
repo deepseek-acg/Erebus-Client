@@ -28,6 +28,10 @@ public final class MapRenderer {
         public boolean bases = true, stashes = true, storage = true, spawners = true, players = true, structures = true, waypoints = true;
         public boolean hideExplored;
         public boolean chunkGrid;
+        /** Structures predicted from the seed, and which kinds. */
+        public boolean predicted;
+        public java.util.Set<dev.erebus.client.seed.StructurePredictor.Kind> predictedKinds =
+                java.util.EnumSet.noneOf(dev.erebus.client.seed.StructurePredictor.Kind.class);
     }
 
     /** Something drawn on the map, and where it ended up on screen (for hover text and clicks). */
@@ -142,6 +146,27 @@ public final class MapRenderer {
                     Drawn d = out.get(c[0]);
                     out.set(c[0], new Drawn(d.sx(), d.sy(), d.title(), d.detail() + " · +" + (c[1] - 1) + " more here, zoom in",
                             d.color(), d.mark(), d.waypoint()));
+                }
+            }
+        }
+
+        // ---- predicted structures (from the seed) ------------------------------------------------------
+        if (layers.predicted && !layers.predictedKinds.isEmpty() && Minecraft.getInstance().level != null) {
+            Long seed = dev.erebus.client.module.world.SeedCracker.knownSeed();
+            if (seed != null) {
+                var predictor = dev.erebus.client.seed.StructurePredictor.get(seed, Minecraft.getInstance().level.dimension());
+                int r = (int) Math.ceil(reach);
+                for (var p : predictor.query((int) cx - r, (int) cz - r, (int) cx + r, (int) cz + r, layers.predictedKinds)) {
+                    // already found and on the map: the real marker is enough
+                    if (MapStore.hasStructure(p.kind().label, p.x(), p.z(), 64)) continue;
+                    float[] sp = toScreen(p.x() + 0.5, p.z() + 0.5, cx, cz, scale, cos, sin, mx, my);
+                    if (!inside(sp, x, y, w, h) || crowded(cells, cell * 2, sp, 5)) continue;
+                    int c = p.kind().color | 0xFF000000;
+                    if (scale >= 1 / 48.0) outlineBadge(g, sp[0], sp[1], p.kind().label.substring(0, 1), c);
+                    else square(g, sp[0], sp[1], 1.5f, c & 0x80FFFFFF);
+                    if (out != null) out.add(new Drawn(sp[0], sp[1], "Predicted " + p.kind().label, "~" + p.x() + " ~" + p.z()
+                            + " · from the seed, not seen yet", c, null, null));
+                    claim(cells, cell * 2, sp, 5, out);
                 }
             }
         }
@@ -269,6 +294,14 @@ public final class MapRenderer {
         Render2D.roundRect(g, px - 6, py - 6, 12, 12, 3, 0xE0000000);
         Render2D.roundRect(g, px - 5, py - 5, 10, 10, 2, color);
         Text.draw(g, letter, px - Text.width(letter, true) / 2, py - 4, 0xFF101014, true, false);
+    }
+
+    /** A predicted structure: an outlined tile with its first letter in its colour (found ones are filled). */
+    private static void outlineBadge(GuiGraphics g, float sx, float sy, String letter, int color) {
+        int px = Math.round(sx), py = Math.round(sy);
+        Render2D.roundRect(g, px - 6, py - 6, 12, 12, 3, 0xC0000000);
+        Render2D.roundRectBorder(g, px - 5, py - 5, 10, 10, 2, color);
+        Text.draw(g, letter, px - Text.width(letter, true) / 2, py - 4, color, true, false);
     }
 
     private static void diamond(GuiGraphics g, float sx, float sy, int r, int color) {
