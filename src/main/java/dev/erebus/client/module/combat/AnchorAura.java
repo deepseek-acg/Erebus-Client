@@ -11,26 +11,18 @@ import dev.erebus.client.setting.TextSetting;
 import dev.erebus.client.util.ExplosionDamage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.monster.Enemy;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 
 /**
  * Auto Safe Anchor's sequence, started by itself at whichever nearby spot hurts an opponent most. Ported from
@@ -144,7 +136,7 @@ public final class AnchorAura extends AnchorSequence {
     @Override
     protected void onEnable() {
         super.onEnable();
-        CrystalAura.singleplayerHint(this, targetMobs.get());
+        Targets.singleplayerHint(this, targetMobs.get());
         target = null;
         rearm = 0;
         lastSpot = null;
@@ -204,7 +196,7 @@ public final class AnchorAura extends AnchorSequence {
         info = null;
         target = findTarget();
         if (target == null) {
-            info = CrystalAura.noTargetReason(targetMobs.get());
+            info = noTargetWhy;
             return;
         }
         Spot spot = bestSpot(target);
@@ -221,22 +213,13 @@ public final class AnchorAura extends AnchorSequence {
     // Targets
     // =====================================================================================================
 
+    /** Why {@link #findTarget()} last found nobody. */
+    private String noTargetWhy;
+
     private LivingEntity findTarget() {
-        Set<String> ignored = Arrays.stream(ignoreNames.get().split(","))
-                .map(s -> s.trim().toLowerCase(Locale.ROOT)).filter(s -> !s.isEmpty()).collect(Collectors.toSet());
-        List<LivingEntity> found = new ArrayList<>();
-        double range = targetRange.get();
-        for (Entity e : mc.level.entitiesForRendering()) {
-            if (!(e instanceof LivingEntity le) || e == mc.player || !le.isAlive() || le.isDeadOrDying() || e.isSpectator()) continue;
-            if (le instanceof Player p) {
-                if (p.isCreative() || ignored.contains(p.getGameProfile().name().toLowerCase(Locale.ROOT))) continue;
-            } else if (!(targetMobs.get() && le instanceof Enemy)) {
-                continue;
-            }
-            if (mc.player.distanceTo(le) > range) continue;
-            if (ignoreNaked.get() && naked(le)) continue;
-            found.add(le);
-        }
+        Targets.Found f = Targets.find(targetRange.get(), targetMobs.get(), ignoreNaked.get(), ignoreNames.get());
+        List<LivingEntity> found = f.list();
+        noTargetWhy = f.whyNone();
         if (found.isEmpty()) return null;
         Comparator<LivingEntity> byDistance = Comparator.comparingDouble(p -> mc.player.distanceToSqr(p));
         return switch (priority.get()) {
@@ -248,13 +231,6 @@ public final class AnchorAura extends AnchorSequence {
             })).orElse(null);
             default -> found.stream().min(byDistance).orElse(null);
         };
-    }
-
-    private static boolean naked(LivingEntity p) {
-        for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
-            if (!p.getItemBySlot(slot).isEmpty()) return false;
-        }
-        return true;
     }
 
     // =====================================================================================================

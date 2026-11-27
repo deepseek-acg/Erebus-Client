@@ -25,11 +25,8 @@ import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
-import net.minecraft.world.entity.monster.Enemy;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
@@ -41,19 +38,16 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
  * Places end crystals next to opponents and breaks them, placing obsidian first only when it's worth it. Ported
@@ -332,25 +326,9 @@ public final class CrystalAura extends Module {
     // Lifecycle
     // =====================================================================================================
 
-    /**
-     * What to show when there's nobody to go for. In singleplayer there are never other players, so without Target
-     * mobs it can't do anything at all: say so rather than sit there quietly.
-     */
-    static String noTargetReason(boolean mobs) {
-        if (!mobs && mc.getSingleplayerServer() != null && mc.level != null && mc.level.players().size() <= 1) return "no players: turn on Target mobs";
-        return mobs ? "no player or hostile mob in range" : "no player in range";
-    }
-
-    /** A one-time hint when it's turned on where it can't find anyone (singleplayer, players only). */
-    static void singleplayerHint(dev.erebus.client.module.Module m, boolean mobs) {
-        if (mobs || mc.getSingleplayerServer() == null || mc.level == null || mc.level.players().size() > 1) return;
-        dev.erebus.client.util.Chat.info(m.name + " only goes for other players, and there are none in singleplayer. Turn on Target mobs in its "
-                + "settings to try it on hostile mobs (a zombie works well as a dummy).");
-    }
-
     @Override
     protected void onEnable() {
-        singleplayerHint(this, targetMobs.get());
+        Targets.singleplayerHint(this, targetMobs.get());
         stage = Stage.IDLE;
         target = null;
         base = null;
@@ -760,7 +738,7 @@ public final class CrystalAura extends Module {
 
     private Spot plan() {
         List<LivingEntity> targets = targets();
-        idleReason = targets.isEmpty() ? noTargetReason(targetMobs.get()) : "no good spot";
+        idleReason = targets.isEmpty() ? noTargetWhy : "no good spot";
         if (targets.isEmpty()) {
             if (stage == Stage.IDLE) target = null;
             return null;
@@ -935,22 +913,13 @@ public final class CrystalAura extends Module {
         return lowHealth.get() > 0 && hp < lowHealth.get() ? lowHealthDamage.floatValue() : minDamage.floatValue();
     }
 
+    /** Why {@link #targets()} last came back empty. */
+    private String noTargetWhy;
+
     private List<LivingEntity> targets() {
-        Set<String> ignored = Arrays.stream(ignoreNames.get().split(","))
-                .map(s -> s.trim().toLowerCase(Locale.ROOT)).filter(s -> !s.isEmpty()).collect(Collectors.toSet());
-        List<LivingEntity> found = new ArrayList<>();
-        double range = targetRange.get();
-        for (Entity e : mc.level.entitiesForRendering()) {
-            if (!(e instanceof LivingEntity le) || e == mc.player || !le.isAlive() || le.isDeadOrDying() || e.isSpectator()) continue;
-            if (le instanceof Player p) {
-                if (p.isCreative() || ignored.contains(p.getGameProfile().name().toLowerCase(Locale.ROOT))) continue;
-            } else if (!(targetMobs.get() && le instanceof Enemy)) {
-                continue;
-            }
-            if (mc.player.distanceTo(le) > range) continue;
-            if (ignoreNaked.get() && naked(le)) continue;
-            found.add(le);
-        }
+        Targets.Found f = Targets.find(targetRange.get(), targetMobs.get(), ignoreNaked.get(), ignoreNames.get());
+        List<LivingEntity> found = f.list();
+        noTargetWhy = f.whyNone();
         Comparator<LivingEntity> byDistance = Comparator.comparingDouble(p -> mc.player.distanceToSqr(p));
         if (priority.is("Lowest health")) {
             found.sort(Comparator.<LivingEntity>comparingDouble(p -> p.getHealth() + p.getAbsorptionAmount()).thenComparing(byDistance));
@@ -960,13 +929,6 @@ public final class CrystalAura extends Module {
         // stay on the opponent we're fighting if they're still a candidate
         if (target != null && found.remove(target) && !priority.is("Most damage")) found.add(0, target);
         return found;
-    }
-
-    private static boolean naked(LivingEntity p) {
-        for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
-            if (!p.getItemBySlot(slot).isEmpty()) return false;
-        }
-        return true;
     }
 
     /** Whether a block at {@code pos} is where the opponent is about to move (or land), from their last movement. */
