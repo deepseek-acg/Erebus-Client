@@ -24,7 +24,8 @@ import java.util.Set;
  * </ul>
  * A marker only counts if it sits at exactly the chunk position one of the four orientations puts it at, with its
  * partner block where that same orientation puts it; anything else is a player build or another structure.
- * Buried treasure is a chest at (9, 9) in its chunk, buried under sand, sandstone or gravel.
+ * Buried treasure is a chest at (9, 9) in its chunk, buried under sand, sandstone or gravel. Igloos and villages
+ * are found from their templates instead, by {@link TemplateStarts}.
  */
 public final class StructureScanner {
     private StructureScanner() {
@@ -34,6 +35,8 @@ public final class StructureScanner {
         DESERT_PYRAMID("Desert pyramid", 32, 8, 14357617),
         JUNGLE_TEMPLE("Jungle temple", 32, 8, 14357619),
         SWAMP_HUT("Swamp hut", 32, 8, 14357620),
+        IGLOO("Igloo", 32, 8, 14357618),
+        VILLAGE("Village", 34, 8, 10387312),
         BURIED_TREASURE("Buried treasure", 1, 0, 0);
 
         public final String label;

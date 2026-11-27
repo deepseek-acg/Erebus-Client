@@ -150,8 +150,8 @@ public final class SeedSolver {
                 bits += 2 * lowBits(s.limit());
             }
         }
-        if (spreads < 3) return "need at least 3 temples or huts (have " + spreads + ")";
-        if (bits < 18) return "need more temples or huts";
+        if (spreads < 3) return "need at least 3 structures (have " + spreads + ")";
+        if (bits < 18) return "need more structures (temples, huts and igloos count most)";
         return null;
     }
 

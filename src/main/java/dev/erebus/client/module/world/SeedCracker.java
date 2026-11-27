@@ -33,10 +33,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * Works out the world seed from structures you come across. Proof of concept for servers with vanilla world
  * generation settings.
  *
- * <p>It watches loaded overworld chunks for desert pyramids, jungle temples, swamp huts and buried treasure, keeps
- * every one it finds per server, and once there are enough, recovers the low 48 bits of the seed from where they
- * generated and the top 16 bits from the hashed seed the server sends. See {@link SeedSolver} for the maths. It
- * only reads chunks the server already sent; nothing is sent to the server.
+ * <p>It watches loaded overworld chunks for desert pyramids, jungle temples, swamp huts, igloos, villages and buried
+ * treasure, keeps every one it finds per server, and once there are enough, recovers the low 48 bits of the seed
+ * from where they generated and the top 16 bits from the hashed seed the server sends. See {@link SeedSolver} for
+ * the maths. It only reads chunks the server already sent; nothing is sent to the server.
  */
 public final class SeedCracker extends Module {
     private static SeedCracker instance;
@@ -45,6 +45,8 @@ public final class SeedCracker extends Module {
     private final BoolSetting jungleTemples;
     private final BoolSetting swampHuts;
     private final BoolSetting treasure;
+    private final BoolSetting igloos;
+    private final BoolSetting villages;
     private final BoolSetting autoCrack;
     private final BoolSetting announce;
     private final BoolSetting tolerate;
@@ -57,12 +59,16 @@ public final class SeedCracker extends Module {
     private int attemptedWith = -1;
 
     public SeedCracker() {
-        super("Seed Cracker", "Works out the world seed from desert pyramids, jungle temples, swamp huts and buried treasure you come "
-                + "across. Proof of concept: needs a server with vanilla world generation settings.", Category.WORLD);
+        super("Seed Cracker", "Works out the world seed from desert pyramids, jungle temples, swamp huts, igloos, villages and buried "
+                + "treasure you come across. Proof of concept: needs a server with vanilla world generation settings.", Category.WORLD);
         group("Collect");
         pyramids = add(new BoolSetting("Desert pyramids", "Record desert pyramids.", true));
         jungleTemples = add(new BoolSetting("Jungle temples", "Record jungle temples.", true));
         swampHuts = add(new BoolSetting("Swamp huts", "Record swamp huts.", true));
+        igloos = add(new BoolSetting("Igloos", "Record igloos (matched against the game's igloo template, at the spot its start chunk puts it).", true));
+        villages = add(new BoolSetting("Villages", "Record villages, from their meeting point (bell, well or fountain), matched against the "
+                + "game's templates at the spot its start chunk puts it. Each says less than a temple, so it takes more of them, but "
+                + "they're common.", true));
         treasure = add(new BoolSetting("Buried treasure", "Record buried treasure chests (a chest at the same spot in a chunk, under sand). "
                 + "Speeds up cracking; ignored automatically if one turns out to be a player's chest.", true));
         group("Cracking");
@@ -127,8 +133,15 @@ public final class SeedCracker extends Module {
 
     @Override
     protected void onDisable() {
-        queue.clear();
+        clearQueues();
         info = null;
+    }
+
+    private void clearQueues() {
+        queue.clear();
+        templateQueue.clear();
+        templateWaiting.clear();
+        templateQueued.clear();
     }
 
     @Override
@@ -138,7 +151,7 @@ public final class SeedCracker extends Module {
         if (data == null || !key.equals(data.key())) {
             data = SeedData.load(key);
             attemptedWith = -1;
-            queue.clear();
+            clearQueues();
             if (mc.level.dimension() == Level.OVERWORLD) queueLoaded();
         }
         long hashed = ((BiomeManagerAccessor) mc.level.getBiomeManager()).erebus$hashedSeed();
@@ -146,19 +159,77 @@ public final class SeedCracker extends Module {
             data.hashedSeed = hashed;
             data.save();
         }
-        if (mc.level.dimension() != Level.OVERWORLD) queue.clear();
+        if (mc.level.dimension() != Level.OVERWORLD && (!queue.isEmpty() || !templateQueued.isEmpty())) clearQueues();
         Set<StructureScanner.Kind> kinds = kinds();
         for (int i = 0; i < 8 && !queue.isEmpty(); i++) {
             ChunkPos p = queue.poll();
             LevelChunk chunk = mc.level.getChunkSource().getChunk(p.x, p.z, ChunkStatus.FULL, false);
             if (chunk == null) continue;
             for (StructureScanner.Found f : StructureScanner.scan(chunk, kinds)) record(f);
+            for (StructureScanner.Kind k : TEMPLATE_KINDS) {
+                if (kinds.contains(k) && dev.erebus.client.seed.TemplateStarts.worthChecking(chunk, k)) {
+                    for (int[] c : dev.erebus.client.seed.TemplateStarts.candidates(p.x, p.z)) {
+                        if (templateQueued.add(k.name() + c[0] + "," + c[1])) templateQueue.add(new Object[]{k, c[0], c[1]});
+                    }
+                }
+            }
         }
+        checkTemplateStarts();
         if (autoCrack.get() && !cracking && data.worldSeed == null && knownSeed.get().isBlank() && data.structures.size() != attemptedWith
                 && SeedSolver.notEnough(data.clues(true)) == null) {
             crack(false);
         }
         info = status();
+    }
+
+    private static final StructureScanner.Kind[] TEMPLATE_KINDS = {StructureScanner.Kind.IGLOO, StructureScanner.Kind.VILLAGE};
+    /** Possible igloo or village start chunks to check: {kind, chunkX, chunkZ}. */
+    private final ArrayDeque<Object[]> templateQueue = new ArrayDeque<>();
+    /** What's in {@link #templateQueue} or waiting, so each possible start chunk is queued once. */
+    private final Set<String> templateQueued = new java.util.HashSet<>();
+    /** When each possible start chunk was last checked without a match (not checked again for 30 seconds). */
+    private final java.util.Map<String, Long> templateTried = new java.util.HashMap<>();
+
+    /** Possible start chunks whose surroundings weren't all loaded yet: looked at again every 2 seconds while they're in range. */
+    private final List<Object[]> templateWaiting = new ArrayList<>();
+    private int waitTicks;
+
+    /** Checks a few possible igloo and village start chunks against their templates (a few per tick, it's slower). */
+    private void checkTemplateStarts() {
+        if (++waitTicks >= 40) {
+            waitTicks = 0;
+            templateQueue.addAll(templateWaiting);
+            templateWaiting.clear();
+        }
+        long now = System.currentTimeMillis();
+        int budget = 12, looked = 0;
+        while (budget > 0 && looked++ < 256 && !templateQueue.isEmpty()) {
+            Object[] q = templateQueue.poll();
+            StructureScanner.Kind k = (StructureScanner.Kind) q[0];
+            int cx = (int) q[1], cz = (int) q[2];
+            String key = k.name() + cx + "," + cz;
+            templateQueued.remove(key);
+            if (data.has(k, cx, cz)) continue;
+            Long last = templateTried.get(key);
+            if (last != null && now - last < 30_000) continue;
+            if (!dev.erebus.client.seed.TemplateStarts.areaLoaded(mc.level, cx, cz)) {
+                // the rest of it hasn't arrived yet (new terrain can take a while): wait while it's within render distance
+                ChunkPos me = mc.player.chunkPosition();
+                int r = mc.options.getEffectiveRenderDistance() + 1;
+                if (Math.abs(cx - me.x) <= r && Math.abs(cz - me.z) <= r && templateQueued.add(key)) templateWaiting.add(q);
+                continue;
+            }
+            budget--;
+            templateTried.put(key, now);
+            if (templateTried.size() > 20_000) templateTried.clear();
+            var at = dev.erebus.client.seed.TemplateStarts.startsIn(mc.level, k, cx, cz);
+            if (at != null) record(new StructureScanner.Found(k, cx, cz, at));
+        }
+        if (templateQueue.size() > 50_000 || templateWaiting.size() > 5_000) {
+            templateQueue.clear();
+            templateWaiting.clear();
+            templateQueued.clear();
+        }
     }
 
     private Set<StructureScanner.Kind> kinds() {
@@ -167,6 +238,8 @@ public final class SeedCracker extends Module {
         if (jungleTemples.get()) k.add(StructureScanner.Kind.JUNGLE_TEMPLE);
         if (swampHuts.get()) k.add(StructureScanner.Kind.SWAMP_HUT);
         if (treasure.get()) k.add(StructureScanner.Kind.BURIED_TREASURE);
+        if (igloos.get()) k.add(StructureScanner.Kind.IGLOO);
+        if (villages.get()) k.add(StructureScanner.Kind.VILLAGE);
         return k;
     }
 
@@ -190,7 +263,7 @@ public final class SeedCracker extends Module {
             return;
         }
         int spreads = (int) data.structures.stream().filter(e -> !e.rejected() && !e.kind().equals(StructureScanner.Kind.BURIED_TREASURE.name())).count();
-        String detail = f.kind().label + " at " + m.getX() + ", " + m.getZ() + " (" + spreads + " temples/huts, "
+        String detail = f.kind().label + " at " + m.getX() + ", " + m.getZ() + " (" + spreads + " structures, "
                 + (data.counted() - spreads) + " treasures)";
         Notifications.push(name, detail, Notifications.Kind.INFO);
         if (announce.get()) chat("Recorded " + detail + ".");

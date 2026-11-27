@@ -41,13 +41,13 @@ import java.util.stream.Stream;
  * (chests, gold blocks, lanterns, lava), and a match only needs most of the template, since pieces decay and get
  * mined.
  */
-final class StructureTemplates {
+public final class StructureTemplates {
     private StructureTemplates() {
     }
 
     /** One template, reduced to its comparable blocks. */
-    record Template(String name, int[] x, int[] y, int[] z, Block[] block) {
-        int size() {
+    public record Template(String name, int[] x, int[] y, int[] z, Block[] block) {
+        public int size() {
             return block.length;
         }
     }
@@ -55,7 +55,7 @@ final class StructureTemplates {
     private static final Map<String, List<Template>> CACHE = new HashMap<>();
 
     /** Templates under {@code data/minecraft/structure/<dir>} with at least {@code minBlocks} comparable blocks. */
-    static synchronized List<Template> load(String dir, Function<Block, Block> canon, int minBlocks) {
+    public static synchronized List<Template> load(String dir, Function<Block, Block> canon, int minBlocks) {
         String key = dir + "#" + minBlocks + "#" + System.identityHashCode(canon);
         List<Template> cached = CACHE.get(key);
         if (cached != null) return cached;
@@ -234,6 +234,28 @@ final class StructureTemplates {
         return keyTotal > 0 && keyHits >= Math.min(minKey, keyTotal) && keyHits * 2 >= keyTotal;
     }
 
+    /**
+     * How well the template matches the world placed with its origin at (ox, oy, oz) and transform {@code tr} (0-3:
+     * rotations by 0, 90, 180, 270 degrees clockwise; 4-7: the same mirrored): whether at least {@code minFraction}
+     * of its blocks, and at least {@code minMatched} of them, are in place. A quick look at a few of its blocks
+     * rules most wrong placements out first.
+     */
+    public static boolean fitsAt(Level level, Template t, int tr, int ox, int oy, int oz, Function<Block, Block> canon, double minFraction, int minMatched) {
+        int sample = Math.min(8, t.size()), hits = 0;
+        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
+        for (int i = 0; i < sample; i++) {
+            p.set(ox + tx(t.x()[i], t.z()[i], tr), oy + t.y()[i], oz + tz(t.x()[i], t.z()[i], tr));
+            if (canon.apply(level.getBlockState(p).getBlock()) == t.block()[i]) hits++;
+        }
+        if (hits * 8 < sample * 3) return false;
+        return fits(level, t, tr, ox, oy, oz, canon, minFraction, minMatched, null, 0);
+    }
+
+    /** Where the template's block at (x, z) goes, relative to its origin, under transform {@code tr}: {x, z}. */
+    public static int[] transform(int x, int z, int tr) {
+        return new int[]{tx(x, z, tr), tz(x, z, tr)};
+    }
+
     // the 8 rotations / mirrorings of a template's x and z
     private static int tx(int x, int z, int tr) {
         int mx = tr >= 4 ? -x : x;
@@ -258,7 +280,7 @@ final class StructureTemplates {
     // ---- block classes for each structure ----
 
     /** Blocks that never count either way: air, markers, loot, light sources and liquids that get changed or taken. */
-    static boolean ignored(Block b) {
+    public static boolean ignored(Block b) {
         return b == Blocks.AIR || b == Blocks.CAVE_AIR || b == Blocks.VOID_AIR || b == Blocks.STRUCTURE_VOID || b == Blocks.JIGSAW
                 || b == Blocks.STRUCTURE_BLOCK || b == Blocks.CHEST || b == Blocks.TRAPPED_CHEST || b == Blocks.BARREL || b == Blocks.SPAWNER
                 || b == Blocks.LAVA || b == Blocks.WATER || b == Blocks.GOLD_BLOCK || b == Blocks.LANTERN || b == Blocks.SOUL_LANTERN
@@ -268,7 +290,7 @@ final class StructureTemplates {
     }
 
     /** Remembers a canon function's answer per block type (some look up the block's id). */
-    private static Function<Block, Block> memo(Function<Block, Block> f) {
+    public static Function<Block, Block> memo(Function<Block, Block> f) {
         Map<Block, Block> cache = new java.util.concurrent.ConcurrentHashMap<>();
         Block none = Blocks.STRUCTURE_VOID;
         return b -> {
