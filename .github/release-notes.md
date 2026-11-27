@@ -2,6 +2,10 @@ Erebus for Minecraft **1.21.11** (Fabric).
 
 **Install:** put the `erebus-<version>.jar` below in your `mods` folder together with [Fabric API](https://modrinth.com/mod/fabric-api) for 1.21.11. Requires Fabric Loader 0.20+ and Java 21. Open the dashboard with Right Shift.
 
+### New in 0.6.3
+- **Mineshafts are harder to fake**: a mineshaft's start room has a dome of air above it, and that's now required, so a room a player dug (with a flat ceiling) next to rails or wooden supports doesn't count as one.
+- **A misread mineshaft no longer blocks the seed**: if nothing fits exactly, up to 2 mineshafts (or other clues that only check a seed) are set aside, and chat says which. Before, one wrong mineshaft could stop it finding anything unless you had 5 or more temples, huts, igloos or outposts.
+
 ### New in 0.6.2
 - **Seed Cracker reads mineshafts**: from their start room, straight from the chunks the server sends (no need to go underground). They're everywhere, and the same rule placed them in chunks from 1.12 on. In testing, 1 outpost, the End pillars and 3 mineshafts were enough for the seed.
 - **Villages, igloos and outposts count for more**: the cracker also records how each one's first piece came out (its rotation, and which town centre a village has) and checks that against the seed. In testing, 2 villages, an igloo and an outpost went from thousands of possible seeds to exactly one. Abandoned villages count like any other: they're the same structure with a zombie centre.
