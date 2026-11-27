@@ -34,6 +34,13 @@ public final class SeedData {
     public long hashedSeed;
     public Long structureSeed;
     public Long worldSeed;
+    /**
+     * What was seen of the End's pillars: per pillar (in the game's order), its slot 0-9 (from the bedrock on top),
+     * 10 + its radius class (from its width) when only that's known, or -1. Null if never seen.
+     */
+    public int[] pillars;
+    /** The pillar shuffle keys (0-65535) that fit {@link #pillars}, sorted; null if none were seen. */
+    public int[] pillarKeys;
 
     private transient String key;
 
@@ -98,8 +105,9 @@ public final class SeedData {
             StructureScanner.Kind k = e.kindOrNull();
             if (k == null || e.rejected()) continue;
             if (k == StructureScanner.Kind.BURIED_TREASURE && !withChances) continue;
-            out.add(k.clue(e.chunkX(), e.chunkZ()));
+            out.addAll(k.clues(e.chunkX(), e.chunkZ()));
         }
+        if (pillarKeys != null && pillarKeys.length > 0 && pillarKeys.length < 65536) out.add(new SeedSolver.PillarKeys(pillarKeys));
         return out;
     }
 }
