@@ -25,7 +25,8 @@ import java.util.Set;
  * A marker only counts if it sits at exactly the chunk position one of the four orientations puts it at, with its
  * partner block where that same orientation puts it; anything else is a player build or another structure.
  * Buried treasure is a chest at (9, 9) in its chunk, buried under sand, sandstone or gravel. Igloos and villages
- * and pillager outposts are found from their templates instead, by {@link TemplateStarts}.
+ * and pillager outposts are found from their templates instead, by {@link TemplateStarts}, and mineshafts from their
+ * start room, by {@link MineshaftRooms}.
  */
 public final class StructureScanner {
     private StructureScanner() {
@@ -38,6 +39,7 @@ public final class StructureScanner {
         IGLOO("Igloo", 32, 8, 14357618),
         VILLAGE("Village", 34, 8, 10387312),
         OUTPOST("Pillager outpost", 32, 8, 165745296),
+        MINESHAFT("Mineshaft", 1, 0, 0),
         BURIED_TREASURE("Buried treasure", 1, 0, 0);
 
         public final String label;
@@ -52,9 +54,24 @@ public final class StructureScanner {
             this.salt = salt;
         }
 
-        /** What this structure says about the seed. */
+        /**
+         * What this structure says about the seed, including how its first piece came out when that's known: the
+         * rotation of an igloo, village or outpost, and which centre a village has.
+         */
+        public List<SeedSolver.Clue> clues(int chunkX, int chunkZ, String piece, Integer rotation) {
+            List<SeedSolver.Clue> out = new java.util.ArrayList<>(clues(chunkX, chunkZ));
+            if (rotation != null && rotation >= 0 && rotation < 4 && (this == IGLOO || this == VILLAGE || this == OUTPOST)) {
+                int[] pool = this == VILLAGE && piece != null ? TemplateStarts.villageCentreSlots(piece) : null;
+                out.add(pool == null ? new SeedSolver.StartRoll(chunkX, chunkZ, rotation, 0, new int[0])
+                        : new SeedSolver.StartRoll(chunkX, chunkZ, rotation, pool[0], java.util.Arrays.copyOfRange(pool, 1, pool.length)));
+            }
+            return out;
+        }
+
+        /** What this structure's position says about the seed. */
         public List<SeedSolver.Clue> clues(int chunkX, int chunkZ) {
             if (this == BURIED_TREASURE) return List.of(new SeedSolver.Chance(chunkX, chunkZ, 0.01F));
+            if (this == MINESHAFT) return List.of(new SeedSolver.Mineshaft(chunkX, chunkZ));
             SeedSolver.Spread spread = new SeedSolver.Spread(spacing, separation, salt, chunkX, chunkZ);
             // an outpost's start chunk also passed a 1-in-5 roll
             if (this == OUTPOST) return List.of(spread, new SeedSolver.OutpostRoll(chunkX, chunkZ));
@@ -62,7 +79,14 @@ public final class StructureScanner {
         }
     }
 
-    public record Found(Kind kind, int chunkX, int chunkZ, BlockPos marker) {
+    /**
+     * A structure found. {@code piece} (the template of its first piece, for villages) and {@code rotation} (0-3,
+     * clockwise) are null when not known.
+     */
+    public record Found(Kind kind, int chunkX, int chunkZ, BlockPos marker, String piece, Integer rotation) {
+        public Found(Kind kind, int chunkX, int chunkZ, BlockPos marker) {
+            this(kind, chunkX, chunkZ, marker, null, null);
+        }
     }
 
     // (marker x, z, partner x, z) for each orientation, in chunk coordinates

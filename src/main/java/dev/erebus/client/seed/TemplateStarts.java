@@ -86,6 +86,7 @@ public final class TemplateStarts {
 
     /** Whether this chunk may hold part of a village town centre, an igloo or an outpost (so the chunks around it are worth checking). */
     public static boolean worthChecking(LevelChunk chunk, StructureScanner.Kind kind) {
+        if (kind == StructureScanner.Kind.MINESHAFT) return MineshaftRooms.worthChecking(chunk);
         for (LevelChunkSection s : chunk.getSections()) {
             if (s == null || s.hasOnlyAir()) continue;
             if (kind == StructureScanner.Kind.VILLAGE && s.maybeHas(b -> b.is(Blocks.BELL) || b.is(Blocks.DIRT_PATH) || b.is(Blocks.SMOOTH_SANDSTONE)))
@@ -99,10 +100,28 @@ public final class TemplateStarts {
     }
 
     /**
+     * A structure's first piece as found: where its template's origin is, which template (for villages, its town
+     * centre) and its rotation (0-3 clockwise; null when two rotations fit about equally well, as a nearly
+     * symmetric igloo dome can).
+     */
+    public record Start(BlockPos pos, String template, Integer rotation) {
+    }
+
+    /**
      * Whether a structure of this kind starts in chunk (cx, cz): where its first piece is, or null. Needs the chunks
      * around it loaded.
      */
     public static BlockPos startsIn(Level level, StructureScanner.Kind kind, int cx, int cz) {
+        Start s = startPiece(level, kind, cx, cz);
+        return s == null ? null : s.pos();
+    }
+
+    /** Like {@link #startsIn}, with which template matched and how it's turned. */
+    public static Start startPiece(Level level, StructureScanner.Kind kind, int cx, int cz) {
+        if (kind == StructureScanner.Kind.MINESHAFT) {
+            BlockPos room = MineshaftRooms.find(level, cx, cz);
+            return room == null ? null : new Start(room, null, null);
+        }
         List<StructureTemplates.Template> templates;
         Function<Block, Block> canon;
         double fraction;
@@ -113,17 +132,68 @@ public final class TemplateStarts {
             case OUTPOST -> { templates = outposts(); canon = OUTPOST; fraction = 0.6; minMatched = 250; }
             default -> { return null; }
         }
+        // every template and rotation that fits, keeping the best match, and the best score for each rotation
         int cornerX = cx << 4, cornerZ = cz << 4;
+        Start best = null;
+        double[] byRotation = {-1, -1, -1, -1};
         for (StructureTemplates.Template t : templates) {
             for (int tr = 0; tr < 4; tr++) { // structures are only rotated, never mirrored, here
                 for (int[] origin : origins(kind, tr)) {
                     BlockPos at = fitsNear(level, t, tr, cornerX + origin[0], cornerZ + origin[1], canon, fraction, minMatched);
-                    if (at != null) return at;
+                    if (at == null) continue;
+                    double score = StructureTemplates.matchFraction(level, t, tr, at.getX(), at.getY(), at.getZ(), canon);
+                    if (best == null || score > byRotation[best.rotation()]) best = new Start(at, t.name(), tr);
+                    byRotation[tr] = Math.max(byRotation[tr], score);
                 }
             }
         }
-        return null;
+        if (best == null) return null;
+        // the rotation only counts if no other one fits about as well
+        for (int tr = 0; tr < 4; tr++) {
+            if (tr != best.rotation() && byRotation[tr] > byRotation[best.rotation()] - 0.05) return new Start(best.pos(), best.template(), null);
+        }
+        return best;
     }
+
+    /**
+     * Where a village's town centre sits in its biome's start pool, which the game picks from with
+     * {@code nextInt(poolSize)}, each piece taking as many slots as its weight: {poolSize, lo, hi, lo, hi...} for
+     * the centre and its abandoned (zombie) twin, which can't be told apart from their blocks. Null if unknown.
+     */
+    public static int[] villageCentreSlots(String template) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("village/([a-z]+)/(?:zombie/)?town_centers/([a-z0-9_]+)\\.nbt$").matcher(template);
+        if (!m.find()) return null;
+        String biome = m.group(1), name = m.group(2);
+        int[] slots = CENTRE_SLOTS.computeIfAbsent(biome + "/" + name, k -> {
+            String file = "/data/minecraft/worldgen/template_pool/village/" + biome + "/town_centers.json";
+            try (var in = net.minecraft.client.Minecraft.class.getResourceAsStream(file)) {
+                if (in == null) return new int[0];
+                var json = com.google.gson.JsonParser.parseReader(new java.io.InputStreamReader(in)).getAsJsonObject();
+                List<Integer> out = new ArrayList<>();
+                int slot = 0;
+                for (var el : json.getAsJsonArray("elements")) {
+                    var o = el.getAsJsonObject();
+                    int weight = o.get("weight").getAsInt();
+                    String location = o.getAsJsonObject("element").get("location").getAsString();
+                    if (location.endsWith("/" + name)) {
+                        out.add(slot);
+                        out.add(slot + weight);
+                    }
+                    slot += weight;
+                }
+                if (out.isEmpty()) return new int[0];
+                int[] r = new int[out.size() + 1];
+                r[0] = slot;
+                for (int i = 0; i < out.size(); i++) r[i + 1] = out.get(i);
+                return r;
+            } catch (Exception e) {
+                return new int[0];
+            }
+        });
+        return slots.length == 0 ? null : slots;
+    }
+
+    private static final java.util.Map<String, int[]> CENTRE_SLOTS = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** Where the template's origin goes relative to the start chunk's corner, for rotation {@code tr}: {x, z} pairs. */
     private static List<int[]> origins(StructureScanner.Kind kind, int tr) {

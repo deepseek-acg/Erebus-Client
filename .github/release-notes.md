@@ -2,6 +2,9 @@ Erebus for Minecraft **1.21.11** (Fabric).
 
 **Install:** put the `erebus-<version>.jar` below in your `mods` folder together with [Fabric API](https://modrinth.com/mod/fabric-api) for 1.21.11. Requires Fabric Loader 0.20+ and Java 21. Open the dashboard with Right Shift.
 
+### New in 0.6.1
+- **Crystal Aura and Anchor Aura say why they're idle**: the module list shows the reason (no players in range, no crystals, no glowstone in your hotbar, no good spot...). They only go for other players unless Target mobs is on, so in singleplayer, where there are none, they now tell you to turn it on instead of silently doing nothing.
+
 ### New in 0.6.0
 - **Settings keep your place**: changing a setting in the dashboard no longer scrolls the settings back to the top.
 - **Seed Cracker reads more**: igloos, villages (every biome, zombie villages too), pillager outposts and the End's pillars, on top of temples, swamp huts and buried treasure. The pillars still count when their tops are broken off (the bedrock each was capped with stays, and their width under the island is read otherwise). In testing, 2 outposts, 1 village and the End pillars were enough for the seed.

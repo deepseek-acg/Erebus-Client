@@ -66,7 +66,7 @@ obsidian, XP bottles), Armor, and Notifications.
 | Module | Category | What it does |
 | --- | --- | --- |
 | Map | World | Records a map of every chunk you load, per server and dimension, and recognises structures (trial chambers, ancient cities, strongholds, monuments, fortresses, bastions, end cities, temples, swamp huts and more), each confirmed against its real layout so builds aren't flagged. On by default. |
-| Seed Cracker | World | Works out the world seed from desert pyramids, jungle temples, swamp huts, igloos, villages, pillager outposts, buried treasure and the End's pillars. Proof of concept for servers with vanilla world generation settings. |
+| Seed Cracker | World | Works out the world seed from desert pyramids, jungle temples, swamp huts, igloos, villages, pillager outposts, mineshafts, buried treasure and the End's pillars. Proof of concept for servers with vanilla world generation settings. |
 | Stash ESP | Basefinding | Outlines and tracers to storage and other base giveaways (chests, shulkers, ender chests, furnaces, villagers, item frames, chest minecarts...). Alerts when an area looks like a base or a stash, marks it on the map and logs it to `erebus/finds.txt`. |
 | Player Blocks | Basefinding | Highlights blocks the world never generates (concrete, shulkers, beacons, mineral blocks, redstone parts...) and building materials where they don't belong, skipping natural structures and biomes where they occur naturally. Lets Stash ESP tell bases from stashes. |
 | Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
@@ -211,6 +211,21 @@ cracks the seed by itself once it has enough. Nothing is sent to the server.
   and a match there gives the start chunk exactly. Natural ground (grass, dirt, sand, snow) and the
   bell, which players take, don't count towards the match. An outpost also passed an extra 1-in-5 roll,
   which is checked too.
+- **How the first piece came out.** The game rolls each structure's first piece from the seed and its
+  chunk: the rotation of an igloo, village or outpost, and which town centre a village gets. Both are
+  recorded and checked, about 4 more bits per village and 2 per igloo or outpost. Abandoned (zombie)
+  villages aren't a separate structure: they're ordinary villages whose centre came out as a zombie
+  variant (about 1 in 51 in plains), placed by the same rule, so they count like any other. Their
+  centres differ from the normal ones by only a few path blocks, so a centre counts as "this design,
+  normal or abandoned".
+- **Mineshafts.** Every chunk rolls a 1-in-250 chance for one, from the seed and the chunk's
+  coordinates, and the game starts each with a room whose corner is exactly 2 blocks into the start
+  chunk: a flat band of cave air 3 high over 8 to 13 blocks each way. A room counts when that band is
+  there at the corner, on a mostly solid floor, with walls just outside its near sides and mineshaft
+  woodwork, rails or cobwebs around it. The client gets the blocks underground with every chunk, so
+  you don't need to go down. Each is worth about as much as a village, they're everywhere, and the
+  same rule placed them in chunks from 1.12 on. They only check seeds rather than narrow the low bits,
+  so they need at least one temple, igloo, outpost, a few villages or the End pillars alongside.
 - **The End's pillars.** The game shuffles the ten pillars' heights with a 16-bit number from the seed.
   Each pillar was topped with bedrock at its original height, which can't be mined in survival, so the
   bedrock gives its exact slot even after the obsidian around it is gone (and respawning the dragon
@@ -236,10 +251,13 @@ newly recorded structure that doesn't fit it is ignored straight away. If you al
 server's seed, enter it as **Known seed** instead.
 
 How much it takes depends on the mix. In testing: 2 pillager outposts, 1 village and the End pillars
-(read by width only) gave the seed in under a second; 4–6 villages with a couple of temples or
-igloos usually do; temples alone vary by seed, from about 6 to 8. The structures' information
-partly overlaps (what they say about the seed's high bits is correlated), so the module waits until
-it estimates there's enough, and the hashed seed settles whatever few candidates are left.
+(read by width only) gave the seed in under a second, and so did 1 outpost, the End pillars and 3
+mineshafts; 4–6 villages with a couple of temples or igloos usually do; temples alone vary by seed,
+from about 6 to 8. The structures' information partly overlaps (what they say about the seed's high
+bits is correlated, and some sets of positions pin down the low bits much less than usual), so the
+module waits until it estimates there's enough, checks the real size of the search before starting
+it (and asks for another temple, igloo or outpost if it would take more than a minute or so), and
+the hashed seed settles whatever few candidates are left.
 
 **Why not dungeons.** Since 1.18, features like dungeons are placed with a different random
 generator (Xoroshiro) seeded from the full 64-bit seed, which can't be run backwards the way the
