@@ -24,7 +24,8 @@ import java.util.Set;
  * </ul>
  * A marker only counts if it sits at exactly the chunk position one of the four orientations puts it at, with its
  * partner block where that same orientation puts it; anything else is a player build or another structure.
- * Buried treasure is a chest at (9, 9) in its chunk, buried under sand, sandstone or gravel.
+ * Buried treasure is a chest at (9, 9) in its chunk, buried under sand, sandstone or gravel. Igloos and villages
+ * and pillager outposts are found from their templates instead, by {@link TemplateStarts}.
  */
 public final class StructureScanner {
     private StructureScanner() {
@@ -34,6 +35,9 @@ public final class StructureScanner {
         DESERT_PYRAMID("Desert pyramid", 32, 8, 14357617),
         JUNGLE_TEMPLE("Jungle temple", 32, 8, 14357619),
         SWAMP_HUT("Swamp hut", 32, 8, 14357620),
+        IGLOO("Igloo", 32, 8, 14357618),
+        VILLAGE("Village", 34, 8, 10387312),
+        OUTPOST("Pillager outpost", 32, 8, 165745296),
         BURIED_TREASURE("Buried treasure", 1, 0, 0);
 
         public final String label;
@@ -49,9 +53,12 @@ public final class StructureScanner {
         }
 
         /** What this structure says about the seed. */
-        public SeedSolver.Clue clue(int chunkX, int chunkZ) {
-            return this == BURIED_TREASURE ? new SeedSolver.Chance(chunkX, chunkZ, 0.01F)
-                    : new SeedSolver.Spread(spacing, separation, salt, chunkX, chunkZ);
+        public List<SeedSolver.Clue> clues(int chunkX, int chunkZ) {
+            if (this == BURIED_TREASURE) return List.of(new SeedSolver.Chance(chunkX, chunkZ, 0.01F));
+            SeedSolver.Spread spread = new SeedSolver.Spread(spacing, separation, salt, chunkX, chunkZ);
+            // an outpost's start chunk also passed a 1-in-5 roll
+            if (this == OUTPOST) return List.of(spread, new SeedSolver.OutpostRoll(chunkX, chunkZ));
+            return List.of(spread);
         }
     }
 

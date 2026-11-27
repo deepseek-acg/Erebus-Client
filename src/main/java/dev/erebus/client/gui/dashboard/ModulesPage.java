@@ -65,7 +65,7 @@ public final class ModulesPage extends Page {
 
         int lx = x + 6;
         int lw = DashboardScreen.LIST - 12;
-        ScrollPanel list = screen.listPanel(root, lx, y + 6, lw, h - 12);
+        ScrollPanel list = screen.listPanel(root, lx, y + 6, lw, h - 12).key("modules-list:" + id());
         int ry = y + 6;
         for (Module m : mods) {
             list.add(new ListRow(lx, ry, lw, 20, m.name, () -> m == selected, m::isEnabled,
@@ -80,7 +80,7 @@ public final class ModulesPage extends Page {
 
         Module m = selected;
         int paneX = x + DashboardScreen.LIST + 1;
-        ScrollPanel pane = screen.listPanel(root, paneX, y + 1, w - DashboardScreen.LIST - 2, h - 2);
+        ScrollPanel pane = screen.listPanel(root, paneX, y + 1, w - DashboardScreen.LIST - 2, h - 2).key("module:" + m.name);
         int px = paneX + 12;
         int pw = pane.width - 24;
         int py = y + 12;

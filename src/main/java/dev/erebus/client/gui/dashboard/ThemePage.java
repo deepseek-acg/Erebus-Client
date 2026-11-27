@@ -62,7 +62,7 @@ public final class ThemePage extends Page {
                 "Start from a preset, then change anything on the right. Edits apply right away and are saved when you close the menu.");
 
         int paneX = x + DashboardScreen.LIST + 1;
-        ScrollPanel pane = screen.listPanel(root, paneX, y + 1, w - DashboardScreen.LIST - 2, h - 2);
+        ScrollPanel pane = screen.listPanel(root, paneX, y + 1, w - DashboardScreen.LIST - 2, h - 2).key("theme");
         int px = paneX + 12;
         int pw = pane.width - 24;
         int py = y + 12;

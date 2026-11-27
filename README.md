@@ -66,11 +66,12 @@ obsidian, XP bottles), Armor, and Notifications.
 | Module | Category | What it does |
 | --- | --- | --- |
 | Map | World | Records a map of every chunk you load, per server and dimension, and recognises structures (trial chambers, ancient cities, strongholds, monuments, fortresses, bastions, end cities, temples, swamp huts and more), each confirmed against its real layout so builds aren't flagged. On by default. |
-| Seed Cracker | World | Works out the world seed from desert pyramids, jungle temples, swamp huts and buried treasure you come across. Proof of concept for servers with vanilla world generation settings. |
+| Seed Cracker | World | Works out the world seed from desert pyramids, jungle temples, swamp huts, igloos, villages, pillager outposts, buried treasure and the End's pillars. Proof of concept for servers with vanilla world generation settings. |
 | Stash ESP | Basefinding | Outlines and tracers to storage and other base giveaways (chests, shulkers, ender chests, furnaces, villagers, item frames, chest minecarts...). Alerts when an area looks like a base or a stash, marks it on the map and logs it to `erebus/finds.txt`. |
 | Player Blocks | Basefinding | Highlights blocks the world never generates (concrete, shulkers, beacons, mineral blocks, redstone parts...) and building materials where they don't belong, skipping natural structures and biomes where they occur naturally. Lets Stash ESP tell bases from stashes. |
 | Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
 | Freecam | Render | Flies the camera away from your player while your player stays put. Client-side only. Ported from Nyx. |
+| Fullbright | Render | Lights everything up, like a permanent Night Vision only you see. Client-side only. Ported from Nyx. |
 | Logout Spots | Render | Marks where players were standing when they logged out, with name, health and how long ago. |
 | Auto Safe Anchor | Combat | One press: places a respawn anchor where you look, charges it, puts a shield block between you and the blast, detonates it, then turns off. Ported from Mist. |
 | Crystal Aura | Combat | Places and breaks end crystals on nearby opponents as fast as the server answers, sticking to one spot and placing obsidian only when it clearly pays off. Ported from Mist. |
@@ -197,10 +198,25 @@ cracks the seed by itself once it has enough. Nothing is sent to the server.
   (the lever puzzle's sticky pistons), swamp huts (the cauldron next to the crafting table) and buried
   treasure (a chest at the same spot in its chunk, under sand). Each marker has to sit exactly where
   one of the structure's four orientations puts it, so player builds don't count.
+- **Igloos, villages and pillager outposts** are matched against the game's own templates: the igloo's
+  dome, a village's meeting point (the bell, well or fountain in the middle, any biome, zombie villages
+  too) and an outpost's watchtower. The game places all three from their start chunk's corner, so for
+  each possible start chunk there's only one place to look per rotation (two for an outpost's tower),
+  and a match there gives the start chunk exactly. Natural ground (grass, dirt, sand, snow) and the
+  bell, which players take, don't count towards the match. An outpost also passed an extra 1-in-5 roll,
+  which is checked too.
+- **The End's pillars.** The game shuffles the ten pillars' heights with a 16-bit number from the seed.
+  Each pillar was topped with bedrock at its original height, which can't be mined in survival, so the
+  bedrock gives its exact slot even after the obsidian around it is gone (and respawning the dragon
+  rebuilds the pillars exactly). Where the bedrock is gone too, the pillar's width under the island
+  (which nobody mines) still narrows it down: all ten by bedrock pin the number exactly (16 bits), all
+  ten by width alone leave about 5 options (13.7 bits). If a server's End turns out to have its own
+  seed, cracking tries again without the pillars and says so.
 - **Low 48 bits.** Structures pick their chunk inside a region with Java's 48-bit random generator,
-  seeded from the seed, the region and a per-structure salt. Each temple's position fixes some low
-  bits outright (24 = 8 x 3 positions per axis), so the low 20 bits are brute-forced against all of
-  them, then the remaining 28 bits for each survivor (`seed/SeedSolver`).
+  seeded from the seed, the region and a per-structure salt. Each temple, hut or igloo position fixes
+  some low bits outright (24 = 8 x 3 positions per axis: 3 bits per axis), a village 1 bit per axis
+  (26 = 2 x 13), so the low 20 bits are brute-forced against all of them, then the remaining 28 bits
+  for each survivor (`seed/SeedSolver`).
 - **Top 16 bits.** Structures never use them. The server sends a hash of the full seed (the first 8
   bytes of its SHA-256, which the client uses for biome blending); all 65,536 options are hashed and
   compared.
@@ -213,8 +229,16 @@ hashed seed, and sets aside the structures that don't fit, saying which. Once th
 newly recorded structure that doesn't fit it is ignored straight away. If you already know a
 server's seed, enter it as **Known seed** instead.
 
-In testing it found a world's seed from 6 structures (3 desert pyramids, 3 swamp huts) in about 7
-seconds; buried treasure cuts that to 3 or 4 temples. It's a proof of concept for vanilla settings:
+How much it takes depends on the mix. In testing: 2 pillager outposts, 1 village and the End pillars
+(read by width only) gave the seed in under a second; 4–6 villages with a couple of temples or
+igloos usually do; temples alone vary by seed, from about 6 to 8. The structures' information
+partly overlaps (what they say about the seed's high bits is correlated), so the module waits until
+it estimates there's enough, and the hashed seed settles whatever few candidates are left.
+
+**Why not dungeons.** Since 1.18, features like dungeons are placed with a different random
+generator (Xoroshiro) seeded from the full 64-bit seed, which can't be run backwards the way the
+structures' generator can, so a dungeon can only confirm a seed, not help find it. Dungeons in chunks
+generated before 1.18 would work, but that needs the version that generated them. It's a proof of concept for vanilla settings:
 servers that change structure salts (`spigot.yml`) or hide the hashed seed need more work. Actions in
 the dashboard: Crack now, Copy seed, Forget this server.
 
@@ -264,6 +288,12 @@ bases, decorative portals, TNT traps) aren't flagged:
 | Nether fortress | Its blaze spawner, or a stretch of its standard bridge: a 5-wide double deck with walls on both edges and open air above. |
 | End city, bastion, ruined portal | A match against the game's own structure templates (read from the game files): most of a piece's blocks in exactly the template's positions, in one of its 8 rotations and mirrorings. Ruined portals also need their stone-brick trim in place and no lit portal. |
 | Trial chamber, ancient city, end gateway, geode, archaeology | Blocks that can't be obtained in survival (vaults and trial spawners, reinforced deepslate, gateways in bedrock, budding amethyst, suspicious sand and gravel). |
+
+Large structures (trial chambers, ancient cities, fortresses, bastions, end cities) are seen piece by
+piece, and their pieces can be 100+ blocks apart. When the seed is known (singleplayer, cracked, or set
+as Seed Cracker's Known seed), each one's marker goes on the structure's start, worked out from the
+seed, so every piece of it gives the same marker. Without the seed, a second trial chamber marker
+needs to be at least 160 blocks from the first.
 
 The Map module's dashboard page has **Rescan structures** (check loaded chunks again) and **Forget
 structures** (drop every structure marker on this map and rescan), for clearing markers left by

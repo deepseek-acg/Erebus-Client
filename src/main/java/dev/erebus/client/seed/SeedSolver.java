@@ -22,7 +22,11 @@ import java.util.stream.IntStream;
  *   <li>High bits. For each surviving low part, the remaining 2^(48-17-b) values are checked against every
  *       structure in full (in parallel).</li>
  * </ol>
- * The top 16 bits never affect structure placement. They're found by trying all 65536 against the hashed seed the
+ * Pillager outposts also passed a 1-in-5 roll, buried treasure a 1-in-100 one: checked in pass 2. The End's pillars
+ * fix 16 bits that depend on the low 32 bits of the seed only, so with them pass 1 carries on, a bit at a time, to
+ * 32 bits, and pass 2 only has 16 left.
+ *
+ * <p>The top 16 bits never affect structure placement. They're found by trying all 65536 against the hashed seed the
  * server sends (the first 8 bytes of SHA-256 of the seed, which the client uses for biome blending).
  */
 public final class SeedSolver {
@@ -38,7 +42,7 @@ public final class SeedSolver {
     }
 
     /** One structure seen in the world, reduced to what its placement says about the seed. */
-    public sealed interface Clue permits Spread, Chance {
+    public sealed interface Clue permits Spread, Chance, OutpostRoll, PillarKeys {
     }
 
     /**
@@ -78,6 +82,42 @@ public final class SeedSolver {
     public record Chance(int chunkX, int chunkZ, float frequency) implements Clue {
         long key() {
             return (long) chunkX * REGION_X + (long) chunkZ * REGION_Z + LEGACY_SALT;
+        }
+    }
+
+    /**
+     * A pillager outpost's extra roll ("legacy type 1" frequency reduction): its start chunk only gets one if
+     * {@code nextInt(5) == 0} for a generator seeded from the seed and the chunk's coordinates divided by 16.
+     */
+    public record OutpostRoll(int chunkX, int chunkZ) implements Clue {
+        long key() {
+            return (long) ((chunkX >> 4) ^ (chunkZ >> 4) << 4);
+        }
+    }
+
+    /**
+     * The End's obsidian pillars: the game shuffles their heights with {@code new Random(seed).nextLong() & 0xFFFF},
+     * and {@code keys} (sorted) are the values that fit what was seen. That number only depends on the low 32 bits
+     * of the seed, a bit at a time, so it narrows the low bits down further before the high bits are searched.
+     */
+    public record PillarKeys(int[] keys) implements Clue {
+        boolean allows(int key) {
+            return java.util.Arrays.binarySearch(keys, key) >= 0;
+        }
+
+        /** Information it adds, in bits. */
+        double bits() {
+            return keys.length == 0 ? 0 : 16 - Math.log(keys.length) / Math.log(2);
+        }
+
+        /** For each length 1..16, which values of that many low bits some key has. */
+        java.util.BitSet[] prefixes() {
+            java.util.BitSet[] out = new java.util.BitSet[17];
+            for (int len = 1; len <= 16; len++) {
+                out[len] = new java.util.BitSet(1 << len);
+                for (int k : keys) out[len].set(k & ((1 << len) - 1));
+            }
+            return out;
         }
     }
 
@@ -124,6 +164,19 @@ public final class SeedSolver {
         return (int) (state >>> 24) * 5.9604645E-8F < frequency;
     }
 
+    /** Whether a pillager outpost's start chunk passes its extra roll. */
+    public static boolean outpostRoll(long seed, int chunkX, int chunkZ) {
+        long[] st = {scramble(new OutpostRoll(chunkX, chunkZ).key() ^ seed)};
+        st[0] = step(st[0]); // a nextInt() that's thrown away
+        return nextInt(st, 5) == 0;
+    }
+
+    /** The number the End's pillar heights are shuffled with: {@code new Random(seed).nextLong() & 0xFFFF}. */
+    public static int pillarKey(long seed) {
+        long s2 = step(step(scramble(seed)));
+        return (int) ((s2 >>> 16) & 0xFFFF); // the low half of nextLong is the second next(32)
+    }
+
     /** Whether {@code seed} (its low 48 bits) explains every clue. */
     public static boolean fits(long seed, List<Clue> clues) {
         for (Clue c : clues) {
@@ -132,6 +185,10 @@ public final class SeedSolver {
                 if (p[0] != s.chunkX() || p[1] != s.chunkZ()) return false;
             } else if (c instanceof Chance ch) {
                 if (!chanceHits(seed, ch.chunkX(), ch.chunkZ(), ch.frequency())) return false;
+            } else if (c instanceof OutpostRoll o) {
+                if (!outpostRoll(seed, o.chunkX(), o.chunkZ())) return false;
+            } else if (c instanceof PillarKeys pk) {
+                if (!pk.allows(pillarKey(seed))) return false;
             }
         }
         return true;
@@ -141,18 +198,65 @@ public final class SeedSolver {
     // Backward: the structure seed
     // =====================================================================================================
 
-    /** Why cracking can't start yet, or null if the clues are enough to try. */
-    public static String notEnough(List<Clue> clues) {
-        int bits = 0, spreads = 0;
+    /**
+     * Roughly how much the clues say about the 48 bits structures depend on, in bits. Not a plain sum: the
+     * structures' low-bit offsets and the End pillars both describe the low bits (20 and 32 of them at most), and
+     * what different structures say about the high bits partly overlaps, so that part is discounted (by a factor
+     * measured on test seeds).
+     */
+    public static double information(List<Clue> clues) {
+        double low = 0, pillar = 0, high = 0;
         for (Clue c : clues) {
             if (c instanceof Spread s && s.valid()) {
-                spreads++;
-                bits += 2 * lowBits(s.limit());
+                int b = lowBits(s.limit());
+                low += 2 * b;
+                high += 2 * Math.log((double) s.limit() / (1 << b)) / Math.log(2);
+            } else if (c instanceof Chance ch) {
+                high += -Math.log(ch.frequency()) / Math.log(2);
+            } else if (c instanceof OutpostRoll) {
+                high += Math.log(5) / Math.log(2);
+            } else if (c instanceof PillarKeys pk) {
+                pillar += pk.bits();
             }
         }
-        if (spreads < 3) return "need at least 3 temples or huts (have " + spreads + ")";
-        if (bits < 18) return "need more temples or huts";
+        return Math.min(32, Math.min(20, low) + pillar) + 0.75 * high;
+    }
+
+    /**
+     * Why cracking can't start yet, or null if the clues are enough to try. Two things are needed: enough
+     * information overall (by {@link #information}, 34 bits usually leave a few thousand structure seeds at most
+     * for the hashed seed to choose from), and enough of it in the low bits that the search over the high bits
+     * stays short.
+     */
+    public static String notEnough(List<Clue> clues) {
+        int spreads = 0;
+        for (Clue c : clues) if (c instanceof Spread s && s.valid()) spreads++;
+        if (spreads < 2) return "need at least 2 structures (have " + spreads + ")";
+        double info = information(clues);
+        if (info < 34) return "need more structures (have about " + (int) info + " of the 34 bits needed)";
+        if (searchSize(clues) > (1L << 31)) return "need another temple, hut, igloo or outpost (they pin down the low bits)";
         return null;
+    }
+
+    /** Roughly how many high-bit values the second pass will try. */
+    static long searchSize(List<Clue> clues) {
+        int b = 0, lift = 0;
+        PillarKeys pillars = null;
+        for (Clue c : clues) {
+            if (c instanceof Spread s && s.valid()) {
+                b = Math.max(b, lowBits(s.limit()));
+                lift += 2 * lowBits(s.limit());
+            } else if (c instanceof PillarKeys pk && pk.keys().length > 0) {
+                pillars = pk;
+            }
+        }
+        int width = 17 + b;
+        double survivors = Math.max(1, Math.pow(2, width - Math.min(lift, width)));
+        if (pillars != null) {
+            survivors = Math.max(1, survivors * Math.pow(2, 32 - width) * pillars.keys().length / 65536.0);
+            width = 32;
+        }
+        return (long) Math.min(Long.MAX_VALUE / 2, survivors * Math.pow(2, 48 - width));
     }
 
     private static int lowBits(int limit) {
@@ -182,7 +286,17 @@ public final class SeedSolver {
     public static List<Candidate> structureSeeds(List<Clue> clues, int max, AtomicLong progress, int maxMisses) {
         List<Spread> spreads = new ArrayList<>();
         List<Chance> chances = new ArrayList<>();
+        List<OutpostRoll> rolls = new ArrayList<>();
+        PillarKeys pillars = null;
         for (Clue c : clues) {
+            if (c instanceof OutpostRoll o) {
+                rolls.add(o);
+                continue;
+            }
+            if (c instanceof PillarKeys pk) {
+                if (pk.keys().length > 0) pillars = pk;
+                continue;
+            }
             if (c instanceof Spread s) {
                 if (!s.valid()) { // an offset outside the region's range can't be a real start chunk
                     if (maxMisses == 0) return List.of();
@@ -219,42 +333,69 @@ public final class SeedSolver {
         }
         if (lows.isEmpty()) return List.of();
 
+        // the End's pillars: one more bit of their key comes into reach with each further low bit of the seed
+        if (pillars != null) {
+            java.util.BitSet[] keyPrefixes = pillars.prefixes();
+            for (int w = lowBits; w <= 32; w++) {
+                int len = w - 16; // key bits that only need the low w bits of the seed
+                List<Long> next = new ArrayList<>();
+                for (long low : lows) {
+                    for (int bit = 0; bit <= (w == lowBits ? 0 : 1); bit++) {
+                        long cand = w == lowBits ? low : low | ((long) bit << (w - 1));
+                        long m = (1L << w) - 1;
+                        long st = ((cand ^ MUL) & m);
+                        st = (st * MUL + ADD) & m;
+                        st = (st * MUL + ADD) & m;
+                        if (len <= 0 || keyPrefixes[Math.min(16, len)].get((int) ((st >>> 16) & ((1L << Math.min(16, len)) - 1)))) next.add(cand);
+                    }
+                }
+                lows = next;
+                if (lows.isEmpty()) return List.of();
+            }
+            lowBits = 32;
+        }
+
         // pass 2: the high bits, checking the most selective structures first
         spreads.sort((x, y) -> Integer.compare(y.limit(), x.limit()));
-        int highBits = 48 - lowBits;
-        int slices = 1 << Math.min(12, highBits);
-        long perSlice = (1L << highBits) / slices;
-        long totalSlices = (long) slices * lows.size();
+        final int lb = lowBits;
+        int highBits = 48 - lb;
         AtomicLong done = new AtomicLong();
         List<Candidate> found = Collections.synchronizedList(new ArrayList<>());
         Spread[] sp = spreads.toArray(new Spread[0]);
         Chance[] ch = chances.toArray(new Chance[0]);
-        for (long low : lows) {
-            IntStream.range(0, slices).parallel().forEach(slice -> {
-                if (found.size() >= max) return;
-                long[] st = new long[1];
-                long start = slice * perSlice, end = start + perSlice;
-                outer:
-                for (long high = start; high < end; high++) {
-                    long seed = (high << lowBits) | low;
-                    int misses = 0;
-                    for (Spread s : sp) {
-                        st[0] = ((seed + s.key()) ^ MUL) & MASK48;
-                        if (nextInt(st, s.limit()) != s.offsetX() || nextInt(st, s.limit()) != s.offsetZ()) {
-                            if (++misses > allowed) continue outer;
-                        }
+        OutpostRoll[] ro = rolls.toArray(new OutpostRoll[0]);
+        // each work item: one low part and a slice of its high parts
+        int slices = highBits >= 24 ? 1 << 12 : 1;
+        long perSlice = (1L << highBits) / slices;
+        long[] lowArr = lows.stream().mapToLong(Long::longValue).toArray();
+        long total = (long) slices * lowArr.length;
+        java.util.stream.LongStream.range(0, total).parallel().forEach(item -> {
+            if (found.size() >= max) return;
+            long low = lowArr[(int) (item / slices)];
+            long start = (item % slices) * perSlice, end = start + perSlice;
+            long[] st = new long[1];
+            outer:
+            for (long high = start; high < end; high++) {
+                long seed = (high << lb) | low;
+                int misses = 0;
+                for (Spread s : sp) {
+                    st[0] = ((seed + s.key()) ^ MUL) & MASK48;
+                    if (nextInt(st, s.limit()) != s.offsetX() || nextInt(st, s.limit()) != s.offsetZ()) {
+                        if (++misses > allowed) continue outer;
                     }
-                    for (Chance c : ch) {
-                        long state = step(((seed + c.key()) ^ MUL) & MASK48);
-                        if (!((int) (state >>> 24) * 5.9604645E-8F < c.frequency()) && ++misses > allowed) continue outer;
-                    }
-                    found.add(new Candidate(seed, misses));
-                    if (found.size() >= max) return;
                 }
-                if (progress != null) progress.set(done.incrementAndGet() * 1_000_000L / totalSlices);
-            });
-            if (found.size() >= max) break;
-        }
+                for (Chance c : ch) {
+                    long state = step(((seed + c.key()) ^ MUL) & MASK48);
+                    if (!((int) (state >>> 24) * 5.9604645E-8F < c.frequency()) && ++misses > allowed) continue outer;
+                }
+                for (OutpostRoll o : ro) {
+                    if (!outpostRoll(seed, o.chunkX(), o.chunkZ()) && ++misses > allowed) continue outer;
+                }
+                found.add(new Candidate(seed, misses));
+                if (found.size() >= max) return;
+            }
+            if (progress != null) progress.set(done.incrementAndGet() * 1_000_000L / total);
+        });
         List<Candidate> out = new ArrayList<>(found);
         out.sort((p, q) -> p.misses() != q.misses() ? Integer.compare(p.misses(), q.misses()) : Long.compare(p.seed(), q.seed()));
         return out;
