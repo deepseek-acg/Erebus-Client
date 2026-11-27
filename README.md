@@ -125,6 +125,12 @@ and a chance to take a nearly-as-good spot so cycles don't all look the same. "T
 you try settings out on a dummy. Like Crystal Aura it sticks to one spot (see below), and it swaps
 back and looks back only once no new anchor has followed for a moment, not after every anchor.
 
+**Trying them in singleplayer.** Crystal Aura and Anchor Aura only go for other players unless
+"Target mobs" is on, and a singleplayer world has none, so turn it on and use a hostile mob (a zombie
+with no AI makes a good dummy). Turning either on in singleplayer without it says so in chat, and
+the module list shows why either is idle ("no players: turn on Target mobs", "no crystals", "no
+glowstone in your hotbar", "no good spot"...).
+
 The three share the camera, hotbar and keys through one lock (`input/InputLock`): only one of them
 clicks at a time, the automatic ones wait for each other, and pressing Auto Safe Anchor's key takes
 over from whatever is running.
