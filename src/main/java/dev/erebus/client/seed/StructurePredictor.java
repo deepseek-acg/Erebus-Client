@@ -458,6 +458,45 @@ public final class StructurePredictor {
         return out;
     }
 
+    /**
+     * Where the structure of this kind nearest to (x, z) starts, if one is predicted within {@code range} blocks
+     * (null otherwise). Worked out on the predictor's own thread; regions it computes are kept for the map too.
+     */
+    public java.util.concurrent.CompletableFuture<Predicted> nearestStart(Kind kind, int x, int z, int range) {
+        return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            if (!ready) return null;
+            Predicted best = null;
+            long bestD = (long) range * range;
+            for (SetInfo s : sets) {
+                if (s.rings() != null || !s.shows(Set.of(kind))) continue;
+                int spacing = s.spread().spacing();
+                int rx0 = Math.floorDiv((x - range) >> 4, spacing), rx1 = Math.floorDiv((x + range) >> 4, spacing);
+                int rz0 = Math.floorDiv((z - range) >> 4, spacing), rz1 = Math.floorDiv((z + range) >> 4, spacing);
+                for (int rx = rx0; rx <= rx1; rx++) {
+                    for (int rz = rz0; rz <= rz1; rz++) {
+                        long key = ((long) s.index() << 48) ^ ((long) (rx & 0xFFFFFF) << 24) ^ (rz & 0xFFFFFF);
+                        Optional<Predicted> r = regions.get(key);
+                        if (r == null) {
+                            try {
+                                r = compute(s, rx, rz);
+                            } catch (Throwable t) {
+                                r = Optional.empty();
+                            }
+                            regions.put(key, r);
+                        }
+                        if (r.isEmpty() || r.get().kind() != kind) continue;
+                        long dx = r.get().x() - x, dz = r.get().z() - z, d = dx * dx + dz * dz;
+                        if (d <= bestD) {
+                            bestD = d;
+                            best = r.get();
+                        }
+                    }
+                }
+            }
+            return best;
+        }, WORKER);
+    }
+
     /** What, if anything, generates in this region of a random-spread structure set. */
     private Optional<Predicted> compute(SetInfo s, int rx, int rz) {
         RandomSpreadStructurePlacement spread = s.spread();

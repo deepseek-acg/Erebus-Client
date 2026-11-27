@@ -37,7 +37,7 @@ import java.util.Map;
 public final class MapModule extends Module {
     /** Structures that can be recognised from blocks that never generate anywhere else. */
     public enum Structure {
-        TrialChamber("Trial Chamber", 0xFFE0823D, 96), AncientCity("Ancient City", 0xFF2DD4BF, 160), Stronghold("Stronghold", 0xFF86EFAC, 128),
+        TrialChamber("Trial Chamber", 0xFFE0823D, 160), AncientCity("Ancient City", 0xFF2DD4BF, 160), Stronghold("Stronghold", 0xFF86EFAC, 128),
         OceanMonument("Ocean Monument", 0xFF5EEAD4, 72), DesertPyramid("Desert Pyramid", 0xFFFDE68A, 32), JungleTemple("Jungle Temple", 0xFF65A30D, 32),
         SwampHut("Swamp Hut", 0xFF4D7C0F, 24), RuinedPortal("Ruined Portal", 0xFFA855F7, 24), Geode("Amethyst Geode", 0xFFC084FC, 24), Archaeology("Archaeology Site", 0xFFD6B98C, 32),
         NetherFortress("Nether Fortress", 0xFFB91C1C, 128), Bastion("Bastion Remnant", 0xFFFBBF24, 72), EndCity("End City", 0xFFE879F9, 80),
@@ -569,7 +569,46 @@ public final class MapModule extends Module {
         record(st, (int) (sx / n), y, (int) (sz / n));
     }
 
+    /**
+     * How far from where a large structure was spotted its start can be, for the structures that are snapped to their
+     * start when the seed is known. One of these spans so much that different parts of it would otherwise give
+     * markers far apart; tied to the start, every part gives the same one.
+     */
+    private static int snapRange(Structure st) {
+        return switch (st) {
+            case TrialChamber -> 144;
+            case AncientCity -> 144;
+            case NetherFortress -> 128;
+            case Bastion -> 80;
+            case EndCity -> 96;
+            default -> 0;
+        };
+    }
+
+    private static dev.erebus.client.seed.StructurePredictor.Kind predictedKind(Structure st) {
+        for (var k : dev.erebus.client.seed.StructurePredictor.Kind.values()) if (k.label.equals(st.title)) return k;
+        return null;
+    }
+
     private void record(Structure st, int x, int y, int z) {
+        int range = snapRange(st);
+        var kind = range > 0 ? predictedKind(st) : null;
+        Long seed = kind != null && mc.level != null ? SeedCracker.knownSeed() : null;
+        if (seed == null) {
+            mark(st, x, y, z);
+            return;
+        }
+        // seed known: put the marker on the structure's start, so every part of it gives the same marker
+        var level = mc.level;
+        dev.erebus.client.seed.StructurePredictor.get(seed, level.dimension()).nearestStart(kind, x, z, range)
+            .whenComplete((p, err) -> mc.execute(() -> {
+                if (mc.level != level || !isEnabled()) return;
+                if (p != null) mark(st, p.x(), y, p.z());
+                else mark(st, x, y, z);
+            }));
+    }
+
+    private void mark(Structure st, int x, int y, int z) {
         MapStore.Mark mark = new MapStore.Mark(x, y, z, "structure", st.title, st.color);
         if (!MapStore.addStructure(mark, st.radius)) return;
         if (announce.get()) {

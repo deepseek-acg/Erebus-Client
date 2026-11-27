@@ -265,6 +265,12 @@ bases, decorative portals, TNT traps) aren't flagged:
 | End city, bastion, ruined portal | A match against the game's own structure templates (read from the game files): most of a piece's blocks in exactly the template's positions, in one of its 8 rotations and mirrorings. Ruined portals also need their stone-brick trim in place and no lit portal. |
 | Trial chamber, ancient city, end gateway, geode, archaeology | Blocks that can't be obtained in survival (vaults and trial spawners, reinforced deepslate, gateways in bedrock, budding amethyst, suspicious sand and gravel). |
 
+Large structures (trial chambers, ancient cities, fortresses, bastions, end cities) are seen piece by
+piece, and their pieces can be 100+ blocks apart. When the seed is known (singleplayer, cracked, or set
+as Seed Cracker's Known seed), each one's marker goes on the structure's start, worked out from the
+seed, so every piece of it gives the same marker. Without the seed, a second trial chamber marker
+needs to be at least 160 blocks from the first.
+
 The Map module's dashboard page has **Rescan structures** (check loaded chunks again) and **Forget
 structures** (drop every structure marker on this map and rescan), for clearing markers left by
 older versions.
