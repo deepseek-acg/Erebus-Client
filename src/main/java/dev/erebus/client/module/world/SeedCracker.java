@@ -437,14 +437,26 @@ public final class SeedCracker extends Module {
                             + ". One may have been misread (turn on Allow misreads and find a few more), or this server changed its structure "
                             + "settings.";
                     if (message == null) message = failed;
-                    for (int k = 0; k <= maxMisses; k++) {
+                    // misread mineshafts (and other clues that only check seeds) are cheap to allow for: up to 2, as long as
+                    // enough is left; then misread structures, which need pass 1 redone
+                    int checks = (int) clues.stream().filter(c -> c instanceof SeedSolver.Mineshaft || c instanceof SeedSolver.Chance
+                            || c instanceof SeedSolver.OutpostRoll || c instanceof SeedSolver.StartRoll).count();
+                    double info = SeedSolver.information(clues);
+                    List<int[]> tolerances = new ArrayList<>();
+                    tolerances.add(new int[]{0, 0});
+                    if (allowMisreads && hashed != 0) {
+                        for (int c = 1; c <= Math.min(2, checks / 3) && info - 10 * c >= 34; c++) tolerances.add(new int[]{0, c});
+                    }
+                    for (int k = 1; k <= maxMisses; k++) tolerances.add(new int[]{k, 0});
+                    for (int[] tol : tolerances) {
+                        int k = tol[0], c = tol[1];
                         // some sets of positions pin down the low bits much less than usual: don't grind for minutes
                         if (SeedSolver.exactSearchSize(clues, k) > MAX_SEARCH) {
                             if (k == 0) message = "Not enough to crack quickly yet: these structures pin down the seed's low bits less than "
                                     + "usual. Find another temple, hut, igloo or outpost (or read the End pillars).";
                             break;
                         }
-                        List<SeedSolver.Candidate> found = SeedSolver.structureSeeds(clues, MAX_CANDIDATES, progress, k);
+                        List<SeedSolver.Candidate> found = SeedSolver.structureSeeds(clues, MAX_CANDIDATES, progress, k, c);
                         if (found.isEmpty()) continue;
                         if (hashed == 0) {
                             if (found.size() == 1) structure = found.get(0).seed();

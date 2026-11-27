@@ -17,7 +17,8 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
  *
  * <p>A room counts when, at some height, there's an 8x8 band of air three high starting exactly at that corner,
  * standing on a mostly solid floor, with mostly solid walls just outside its two near sides (so it really starts
- * there and isn't part of a bigger open space), and mineshaft woodwork, rails or cobwebs around it. A cave
+ * there and isn't part of a bigger open space), open in the middle above the band where the dome is (which rules
+ * out rooms players dig, with their flat ceilings), and mineshaft woodwork, rails or cobwebs around it. A cave
  * would have to be a flat-floored rectangle lined up with a chunk corner, next to a mineshaft, to pass.
  */
 public final class MineshaftRooms {
@@ -72,6 +73,12 @@ public final class MineshaftRooms {
             }
         }
         if (west < 9 || north < 9) return false;
+        // the dome: the game clears a half-ellipsoid of air on top of the band, so the layer above it is open in the
+        // middle (a room dug by a player nearly always has a flat ceiling there)
+        int dome = 0;
+        int[][] domeAt = {{4, 4}, {3, 3}, {2, 4}, {6, 4}, {4, 2}, {4, 6}};
+        for (int[] d : domeAt) if (air(chunk, p, x0 + d[0], f + 4, z0 + d[1])) dome++;
+        if (dome < 5) return false;
         // and it's part of a mineshaft: corridors leave the room anywhere up its walls (it's 5 to 10 high), and their
         // first wooden support can be a few blocks out
         int shaft = 0;

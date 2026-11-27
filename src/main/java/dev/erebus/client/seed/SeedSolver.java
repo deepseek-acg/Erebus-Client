@@ -355,6 +355,15 @@ public final class SeedSolver {
      * miss, fewest first.
      */
     public static List<Candidate> structureSeeds(List<Clue> clues, int max, AtomicLong progress, int maxMisses) {
+        return structureSeeds(clues, max, progress, maxMisses, 0);
+    }
+
+    /**
+     * Like {@link #structureSeeds(List, int, AtomicLong, int)}, also letting up to {@code checkMisses} of the clues
+     * that only check seeds (mineshafts, buried treasure, outpost and first-piece rolls) go unexplained. Those cost
+     * nothing to leave out of pass 1, so a misread mineshaft can be allowed for even with few other structures.
+     */
+    public static List<Candidate> structureSeeds(List<Clue> clues, int max, AtomicLong progress, int maxMisses, int checkMisses) {
         List<Spread> spreads = new ArrayList<>();
         List<Chance> chances = new ArrayList<>();
         List<OutpostRoll> rolls = new ArrayList<>();
@@ -419,7 +428,7 @@ public final class SeedSolver {
             outer:
             for (long high = start; high < end; high++) {
                 long seed = (high << lb) | low;
-                int misses = 0;
+                int misses = 0, checks = 0;
                 for (Spread s : sp) {
                     st[0] = ((seed + s.key()) ^ MUL) & MASK48;
                     if (nextInt(st, s.limit()) != s.offsetX() || nextInt(st, s.limit()) != s.offsetZ()) {
@@ -428,18 +437,18 @@ public final class SeedSolver {
                 }
                 for (Chance c : ch) {
                     long state = step(((seed + c.key()) ^ MUL) & MASK48);
-                    if (!((int) (state >>> 24) * 5.9604645E-8F < c.frequency()) && ++misses > allowed) continue outer;
+                    if (!((int) (state >>> 24) * 5.9604645E-8F < c.frequency()) && ++checks > checkMisses) continue outer;
                 }
                 for (OutpostRoll o : ro) {
-                    if (!outpostRoll(seed, o.chunkX(), o.chunkZ()) && ++misses > allowed) continue outer;
+                    if (!outpostRoll(seed, o.chunkX(), o.chunkZ()) && ++checks > checkMisses) continue outer;
                 }
                 for (Mineshaft m : ms) {
-                    if (!mineshaftRoll(seed, m.chunkX(), m.chunkZ()) && ++misses > allowed) continue outer;
+                    if (!mineshaftRoll(seed, m.chunkX(), m.chunkZ()) && ++checks > checkMisses) continue outer;
                 }
                 for (StartRoll r : sr) {
-                    if (!startRoll(seed, r) && ++misses > allowed) continue outer;
+                    if (!startRoll(seed, r) && ++checks > checkMisses) continue outer;
                 }
-                found.add(new Candidate(seed, misses));
+                found.add(new Candidate(seed, misses + checks));
                 if (found.size() >= max) return;
             }
             if (progress != null) progress.set(done.incrementAndGet() * 1_000_000L / total);

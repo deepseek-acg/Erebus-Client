@@ -220,9 +220,11 @@ cracks the seed by itself once it has enough. Nothing is sent to the server.
   normal or abandoned".
 - **Mineshafts.** Every chunk rolls a 1-in-250 chance for one, from the seed and the chunk's
   coordinates, and the game starts each with a room whose corner is exactly 2 blocks into the start
-  chunk: a flat band of cave air 3 high over 8 to 13 blocks each way. A room counts when that band is
-  there at the corner, on a mostly solid floor, with walls just outside its near sides and mineshaft
-  woodwork, rails or cobwebs around it. The client gets the blocks underground with every chunk, so
+  chunk: a flat band of cave air 3 high over 8 to 13 blocks each way, with a dome of air on top. A
+  room counts when that band is there at the corner, on a mostly solid floor, with walls just outside
+  its near sides, the dome open above its middle (a room a player dug has a flat ceiling there) and
+  mineshaft woodwork, rails or cobwebs around it. Separate mineshafts a few chunks apart are normal:
+  their corridors run into each other and look like one. The client gets the blocks underground with every chunk, so
   you don't need to go down. Each is worth about as much as a village, they're everywhere, and the
   same rule placed them in chunks from 1.12 on. They only check seeds rather than narrow the low bits,
   so they need at least one temple, igloo, outpost, a few villages or the End pillars alongside.
@@ -244,8 +246,10 @@ cracks the seed by itself once it has enough. Nothing is sent to the server.
 - **Checked twice.** The result is re-checked against every recorded structure with the game's own
   structure placement code before it's reported.
 
-**Misread structures.** If no seed fits every structure, it looks for one that fits all but up to 3 of
-them (needs a few more structures than an exact fit), takes the first whose top bits match the
+**Misread structures.** If no seed fits every structure, it first allows up to 2 misread mineshafts
+(or other clues that only check a seed: buried treasure, an outpost's roll, how a first piece came
+out), which costs little, then looks for a seed that fits all but up to 3 of the structures (needs a
+few more structures than an exact fit), takes the first whose top bits match the
 hashed seed, and sets aside the structures that don't fit, saying which. Once the seed is known, a
 newly recorded structure that doesn't fit it is ignored straight away. If you already know a
 server's seed, enter it as **Known seed** instead.
