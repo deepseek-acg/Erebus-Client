@@ -207,6 +207,12 @@ cracks the seed by itself once it has enough. Nothing is sent to the server.
 - **Checked twice.** The result is re-checked against every recorded structure with the game's own
   structure placement code before it's reported.
 
+**Misread structures.** If no seed fits every structure, it looks for one that fits all but up to 3 of
+them (needs a few more structures than an exact fit), takes the first whose top bits match the
+hashed seed, and sets aside the structures that don't fit, saying which. Once the seed is known, a
+newly recorded structure that doesn't fit it is ignored straight away. If you already know a
+server's seed, enter it as **Known seed** instead.
+
 In testing it found a world's seed from 6 structures (3 desert pyramids, 3 swamp huts) in about 7
 seconds; buried treasure cuts that to 3 or 4 temples. It's a proof of concept for vanilla settings:
 servers that change structure salts (`spigot.yml`) or hide the hashed seed need more work. Actions in
@@ -219,6 +225,30 @@ the sidebar, G for the chunk grid. Right-click anywhere to add a waypoint, cente
 coordinates; right-click a base, stash or structure to highlight it in the world, mark it
 explored, or forget it. The sidebar lists everything found (closest first) and your waypoints,
 which you can rename in place.
+
+### Predicted structures
+
+With the world seed known (always in singleplayer; in multiplayer from Seed Cracker, found or entered
+as Known seed), the map can show where structures generate, as outlined markers. Turn on **Show
+predicted** in the Map module (or the Predicted chip on the full map) and pick which kinds: villages,
+temples, huts, igloos, outposts, monuments, mansions, ancient cities, trail ruins, trial chambers,
+ruined portals, shipwrecks, ocean ruins, strongholds, fortresses, bastions and end cities.
+
+They're worked out with the game's own world generation code, built on the client from its built-in
+registries and the vanilla tag and template files in the game jar: structure placement and frequency
+rules, the biome sources and terrain noise, each structure's own placement checks (biome, and terrain
+height where it needs flat or high ground), the stronghold rings, and where a jigsaw structure's start
+piece lands. In testing every prediction checked matched `/locate` (villages, desert pyramids,
+outposts, monuments, trial chambers, strongholds). Predictions are only right for servers with
+vanilla world generation settings, and a structure that's already been found shows as found instead.
+
+### Minimap
+
+A square map with a light frame (or your theme's accent, or none), N/E/S/W on its edge (turning with
+the map when **Rotate with you** is on), mob dots (hostile red, others green), other players' names,
+waypoints off the map pinned to its edge, and lines underneath for coordinates, biome, facing and
+Nether/Overworld coordinates. **Zoom** goes from 0.125x to 8x, and **Zoom in key** / **Zoom out key**
+step through it (the zoom shows briefly in the corner).
 
 ### Structure detection
 
