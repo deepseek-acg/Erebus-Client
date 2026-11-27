@@ -86,6 +86,7 @@ public final class TemplateStarts {
 
     /** Whether this chunk may hold part of a village town centre, an igloo or an outpost (so the chunks around it are worth checking). */
     public static boolean worthChecking(LevelChunk chunk, StructureScanner.Kind kind) {
+        if (kind == StructureScanner.Kind.MINESHAFT) return MineshaftRooms.worthChecking(chunk);
         for (LevelChunkSection s : chunk.getSections()) {
             if (s == null || s.hasOnlyAir()) continue;
             if (kind == StructureScanner.Kind.VILLAGE && s.maybeHas(b -> b.is(Blocks.BELL) || b.is(Blocks.DIRT_PATH) || b.is(Blocks.SMOOTH_SANDSTONE)))
@@ -103,6 +104,7 @@ public final class TemplateStarts {
      * around it loaded.
      */
     public static BlockPos startsIn(Level level, StructureScanner.Kind kind, int cx, int cz) {
+        if (kind == StructureScanner.Kind.MINESHAFT) return MineshaftRooms.find(level, cx, cz);
         List<StructureTemplates.Template> templates;
         Function<Block, Block> canon;
         double fraction;

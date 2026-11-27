@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * generation settings.
  *
  * <p>It watches loaded overworld chunks for desert pyramids, jungle temples, swamp huts, igloos, villages, pillager
- * outposts and buried treasure, reads the End's pillars, keeps everything it finds per server, and once there's
+ * outposts, mineshafts and buried treasure, reads the End's pillars, keeps everything it finds per server, and once there's
  * enough, recovers the low 48 bits of the seed from them and the top 16 bits from the hashed seed the server sends. See {@link SeedSolver} for
  * the maths. It only reads chunks the server already sent; nothing is sent to the server.
  */
@@ -48,6 +48,7 @@ public final class SeedCracker extends Module {
     private final BoolSetting igloos;
     private final BoolSetting villages;
     private final BoolSetting outposts;
+    private final BoolSetting mineshafts;
     private final BoolSetting endPillars;
     private final BoolSetting autoCrack;
     private final BoolSetting announce;
@@ -62,7 +63,7 @@ public final class SeedCracker extends Module {
 
     public SeedCracker() {
         super("Seed Cracker", "Works out the world seed from desert pyramids, jungle temples, swamp huts, igloos, villages, pillager "
-                + "outposts, buried treasure and the End's pillars you come across. Proof of concept: needs a server with vanilla world "
+                + "outposts, mineshafts, buried treasure and the End's pillars you come across. Proof of concept: needs a server with vanilla world "
                 + "generation settings.", Category.WORLD);
         group("Collect");
         pyramids = add(new BoolSetting("Desert pyramids", "Record desert pyramids.", true));
@@ -75,6 +76,9 @@ public final class SeedCracker extends Module {
         outposts = add(new BoolSetting("Pillager outposts", "Record pillager outposts, from their watchtower, matched against the game's "
                 + "template at the spot its start chunk puts it. Says as much as a temple, plus a little from the outpost's extra 1-in-5 roll.",
                 true));
+        mineshafts = add(new BoolSetting("Mineshafts", "Record mineshafts, from their start room: the game puts its corner exactly 2 "
+                + "blocks into the start chunk. Read from the chunks the server sends, so you don't need to go underground. Each one is "
+                + "worth about as much as a village, and they're everywhere (and follow the same rule in chunks from 1.12 on).", true));
         endPillars = add(new BoolSetting("End pillars", "In the End, read the obsidian pillars around the main island: the game shuffles their "
                 + "heights with a number from the seed. Uses the bedrock each one was topped with (it stays even when the obsidian is "
                 + "mined) or, failing that, its width under the island. Together they're worth about two temples.", true));
@@ -196,7 +200,7 @@ public final class SeedCracker extends Module {
     }
 
     private static final StructureScanner.Kind[] TEMPLATE_KINDS = {StructureScanner.Kind.IGLOO, StructureScanner.Kind.VILLAGE,
-            StructureScanner.Kind.OUTPOST};
+            StructureScanner.Kind.OUTPOST, StructureScanner.Kind.MINESHAFT};
     /** Possible igloo or village start chunks to check: {kind, chunkX, chunkZ}. */
     private final ArrayDeque<Object[]> templateQueue = new ArrayDeque<>();
     /** What's in {@link #templateQueue} or waiting, so each possible start chunk is queued once. */
@@ -338,6 +342,7 @@ public final class SeedCracker extends Module {
         if (igloos.get()) k.add(StructureScanner.Kind.IGLOO);
         if (villages.get()) k.add(StructureScanner.Kind.VILLAGE);
         if (outposts.get()) k.add(StructureScanner.Kind.OUTPOST);
+        if (mineshafts.get()) k.add(StructureScanner.Kind.MINESHAFT);
         return k;
     }
 
@@ -389,6 +394,8 @@ public final class SeedCracker extends Module {
 
     /** More structure seeds than this left over take too long to check against the hashed seed (65,536 hashes each). */
     private static final int MAX_CANDIDATES = 16_384;
+    /** Most high-bit values to try in one search (about a minute on four cores). */
+    private static final long MAX_SEARCH = 1L << 33;
 
     private void crack(boolean byHand) {
         if (data == null || cracking) return;
@@ -428,6 +435,12 @@ public final class SeedCracker extends Module {
                             + "settings.";
                     if (message == null) message = failed;
                     for (int k = 0; k <= maxMisses; k++) {
+                        // some sets of positions pin down the low bits much less than usual: don't grind for minutes
+                        if (SeedSolver.exactSearchSize(clues, k) > MAX_SEARCH) {
+                            if (k == 0) message = "Not enough to crack quickly yet: these structures pin down the seed's low bits less than "
+                                    + "usual. Find another temple, hut, igloo or outpost (or read the End pillars).";
+                            break;
+                        }
                         List<SeedSolver.Candidate> found = SeedSolver.structureSeeds(clues, MAX_CANDIDATES, progress, k);
                         if (found.isEmpty()) continue;
                         if (hashed == 0) {
@@ -506,11 +519,15 @@ public final class SeedCracker extends Module {
         for (SeedData.Entry e : d.structures) {
             StructureScanner.Kind k = e.kindOrNull();
             if (k == null || e.rejected() || k == StructureScanner.Kind.BURIED_TREASURE) continue;
-            RandomSpreadStructurePlacement placement = k == StructureScanner.Kind.OUTPOST
-                    ? new RandomSpreadStructurePlacement(net.minecraft.core.Vec3i.ZERO,
-                            net.minecraft.world.level.levelgen.structure.placement.StructurePlacement.FrequencyReductionMethod.LEGACY_TYPE_1, 0.2F,
-                            k.salt, java.util.Optional.empty(), k.spacing, k.separation, RandomSpreadType.LINEAR)
-                    : new RandomSpreadStructurePlacement(k.spacing, k.separation, RandomSpreadType.LINEAR, k.salt);
+            RandomSpreadStructurePlacement placement = switch (k) {
+                case OUTPOST -> new RandomSpreadStructurePlacement(net.minecraft.core.Vec3i.ZERO,
+                        net.minecraft.world.level.levelgen.structure.placement.StructurePlacement.FrequencyReductionMethod.LEGACY_TYPE_1, 0.2F,
+                        k.salt, java.util.Optional.empty(), k.spacing, k.separation, RandomSpreadType.LINEAR);
+                case MINESHAFT -> new RandomSpreadStructurePlacement(net.minecraft.core.Vec3i.ZERO,
+                        net.minecraft.world.level.levelgen.structure.placement.StructurePlacement.FrequencyReductionMethod.LEGACY_TYPE_3, 0.004F,
+                        k.salt, java.util.Optional.empty(), k.spacing, k.separation, RandomSpreadType.LINEAR);
+                default -> new RandomSpreadStructurePlacement(k.spacing, k.separation, RandomSpreadType.LINEAR, k.salt);
+            };
             ChunkPos p = placement.getPotentialStructureChunk(seed, e.chunkX(), e.chunkZ());
             if (p.x != e.chunkX() || p.z != e.chunkZ()) return false;
             if (!placement.applyAdditionalChunkRestrictions(e.chunkX(), e.chunkZ(), seed)) return false;

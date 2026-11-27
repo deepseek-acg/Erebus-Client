@@ -22,7 +22,8 @@ import java.util.stream.IntStream;
  *   <li>High bits. For each surviving low part, the remaining 2^(48-17-b) values are checked against every
  *       structure in full (in parallel).</li>
  * </ol>
- * Pillager outposts also passed a 1-in-5 roll, buried treasure a 1-in-100 one: checked in pass 2. The End's pillars
+ * Pillager outposts also passed a 1-in-5 roll, buried treasure a 1-in-100 one and mineshafts a 1-in-250 one:
+ * checked in pass 2. The End's pillars
  * fix 16 bits that depend on the low 32 bits of the seed only, so with them pass 1 carries on, a bit at a time, to
  * 32 bits, and pass 2 only has 16 left.
  *
@@ -42,7 +43,7 @@ public final class SeedSolver {
     }
 
     /** One structure seen in the world, reduced to what its placement says about the seed. */
-    public sealed interface Clue permits Spread, Chance, OutpostRoll, PillarKeys {
+    public sealed interface Clue permits Spread, Chance, OutpostRoll, PillarKeys, Mineshaft {
     }
 
     /**
@@ -93,6 +94,14 @@ public final class SeedSolver {
         long key() {
             return (long) ((chunkX >> 4) ^ (chunkZ >> 4) << 4);
         }
+    }
+
+    /**
+     * A mineshaft's start chunk ("legacy type 3"): every chunk rolls {@code nextDouble() < 0.004} on a generator set up
+     * with {@code setLargeFeatureSeed(seed, chunkX, chunkZ)}. The same roll decided mineshafts in 1.12 to 1.17
+     * chunks too.
+     */
+    public record Mineshaft(int chunkX, int chunkZ) implements Clue {
     }
 
     /**
@@ -171,6 +180,27 @@ public final class SeedSolver {
         return nextInt(st, 5) == 0;
     }
 
+    /** Whether a mineshaft starts in this chunk: {@code setLargeFeatureSeed} then {@code nextDouble() < 0.004}. */
+    public static boolean mineshaftRoll(long seed, int chunkX, int chunkZ) {
+        long st = scramble(seed);
+        st = step(st);
+        int a1 = (int) (st >>> 16);
+        st = step(st);
+        int a2 = (int) (st >>> 16);
+        long a = ((long) a1 << 32) + a2;
+        st = step(st);
+        int b1 = (int) (st >>> 16);
+        st = step(st);
+        int b2 = (int) (st >>> 16);
+        long b = ((long) b1 << 32) + b2;
+        st = scramble((long) chunkX * a ^ (long) chunkZ * b ^ seed);
+        st = step(st);
+        long hi = st >>> 22; // next(26)
+        st = step(st);
+        long lo = st >>> 21; // next(27)
+        return ((hi << 27) + lo) * (double) 1.110223E-16F < 0.004;
+    }
+
     /** The number the End's pillar heights are shuffled with: {@code new Random(seed).nextLong() & 0xFFFF}. */
     public static int pillarKey(long seed) {
         long s2 = step(step(scramble(seed)));
@@ -189,6 +219,8 @@ public final class SeedSolver {
                 if (!outpostRoll(seed, o.chunkX(), o.chunkZ())) return false;
             } else if (c instanceof PillarKeys pk) {
                 if (!pk.allows(pillarKey(seed))) return false;
+            } else if (c instanceof Mineshaft m) {
+                if (!mineshaftRoll(seed, m.chunkX(), m.chunkZ())) return false;
             }
         }
         return true;
@@ -215,6 +247,8 @@ public final class SeedSolver {
                 high += -Math.log(ch.frequency()) / Math.log(2);
             } else if (c instanceof OutpostRoll) {
                 high += Math.log(5) / Math.log(2);
+            } else if (c instanceof Mineshaft) {
+                high += Math.log(250) / Math.log(2);
             } else if (c instanceof PillarKeys pk) {
                 pillar += pk.bits();
             }
@@ -231,7 +265,7 @@ public final class SeedSolver {
     public static String notEnough(List<Clue> clues) {
         int spreads = 0;
         for (Clue c : clues) if (c instanceof Spread s && s.valid()) spreads++;
-        if (spreads < 2) return "need at least 2 structures (have " + spreads + ")";
+        if (spreads < 1) return "need at least one temple, hut, igloo, village or outpost";
         double info = information(clues);
         if (info < 34) return "need more structures (have about " + (int) info + " of the 34 bits needed)";
         if (searchSize(clues) > (1L << 31)) return "need another temple, hut, igloo or outpost (they pin down the low bits)";
@@ -287,8 +321,13 @@ public final class SeedSolver {
         List<Spread> spreads = new ArrayList<>();
         List<Chance> chances = new ArrayList<>();
         List<OutpostRoll> rolls = new ArrayList<>();
+        List<Mineshaft> shafts = new ArrayList<>();
         PillarKeys pillars = null;
         for (Clue c : clues) {
+            if (c instanceof Mineshaft m) {
+                shafts.add(m);
+                continue;
+            }
             if (c instanceof OutpostRoll o) {
                 rolls.add(o);
                 continue;
@@ -308,52 +347,11 @@ public final class SeedSolver {
                 chances.add(ch);
             }
         }
-        int b = 0;
-        for (Spread s : spreads) b = Math.max(b, lowBits(s.limit()));
-        int lowBits = 17 + b;
-        long lowMask = (1L << lowBits) - 1;
-
-        // pass 1: the low bits
+        Lows lp = lowParts(spreads, pillars, maxMisses);
+        if (lp == null) return List.of();
+        List<Long> lows = lp.lows();
+        int lowBits = lp.bits();
         final int allowed = maxMisses;
-        List<Long> lows = new ArrayList<>();
-        for (long low = 0; low <= lowMask; low++) {
-            int misses = 0;
-            for (Spread s : spreads) {
-                int sb = lowBits(s.limit());
-                if (sb == 0) continue;
-                int m = (1 << sb) - 1;
-                long st = ((low + s.key()) ^ MUL) & lowMask;
-                st = (st * MUL + ADD) & lowMask;
-                boolean ok = ((int) (st >>> 17) & m) == (s.offsetX() & m);
-                st = (st * MUL + ADD) & lowMask;
-                ok &= ((int) (st >>> 17) & m) == (s.offsetZ() & m);
-                if (!ok && ++misses > allowed) break;
-            }
-            if (misses <= allowed) lows.add(low);
-        }
-        if (lows.isEmpty()) return List.of();
-
-        // the End's pillars: one more bit of their key comes into reach with each further low bit of the seed
-        if (pillars != null) {
-            java.util.BitSet[] keyPrefixes = pillars.prefixes();
-            for (int w = lowBits; w <= 32; w++) {
-                int len = w - 16; // key bits that only need the low w bits of the seed
-                List<Long> next = new ArrayList<>();
-                for (long low : lows) {
-                    for (int bit = 0; bit <= (w == lowBits ? 0 : 1); bit++) {
-                        long cand = w == lowBits ? low : low | ((long) bit << (w - 1));
-                        long m = (1L << w) - 1;
-                        long st = ((cand ^ MUL) & m);
-                        st = (st * MUL + ADD) & m;
-                        st = (st * MUL + ADD) & m;
-                        if (len <= 0 || keyPrefixes[Math.min(16, len)].get((int) ((st >>> 16) & ((1L << Math.min(16, len)) - 1)))) next.add(cand);
-                    }
-                }
-                lows = next;
-                if (lows.isEmpty()) return List.of();
-            }
-            lowBits = 32;
-        }
 
         // pass 2: the high bits, checking the most selective structures first
         spreads.sort((x, y) -> Integer.compare(y.limit(), x.limit()));
@@ -364,6 +362,7 @@ public final class SeedSolver {
         Spread[] sp = spreads.toArray(new Spread[0]);
         Chance[] ch = chances.toArray(new Chance[0]);
         OutpostRoll[] ro = rolls.toArray(new OutpostRoll[0]);
+        Mineshaft[] ms = shafts.toArray(new Mineshaft[0]);
         // each work item: one low part and a slice of its high parts
         int slices = highBits >= 24 ? 1 << 12 : 1;
         long perSlice = (1L << highBits) / slices;
@@ -391,6 +390,9 @@ public final class SeedSolver {
                 for (OutpostRoll o : ro) {
                     if (!outpostRoll(seed, o.chunkX(), o.chunkZ()) && ++misses > allowed) continue outer;
                 }
+                for (Mineshaft m : ms) {
+                    if (!mineshaftRoll(seed, m.chunkX(), m.chunkZ()) && ++misses > allowed) continue outer;
+                }
                 found.add(new Candidate(seed, misses));
                 if (found.size() >= max) return;
             }
@@ -399,6 +401,82 @@ public final class SeedSolver {
         List<Candidate> out = new ArrayList<>(found);
         out.sort((p, q) -> p.misses() != q.misses() ? Integer.compare(p.misses(), q.misses()) : Long.compare(p.seed(), q.seed()));
         return out;
+    }
+
+    /** The low parts of the seed that pass 1 leaves, and how many bits they are. */
+    private record Lows(List<Long> lows, int bits) {
+    }
+
+    /**
+     * Pass 1: the low bits every structure's offsets allow (with up to {@code allowed} that don't), carried on to 32
+     * bits with the End's pillars if there are any. Null if nothing's left.
+     */
+    private static Lows lowParts(List<Spread> spreads, PillarKeys pillars, int allowed) {
+        int b = 0;
+        for (Spread s : spreads) b = Math.max(b, lowBits(s.limit()));
+        int lowBits = 17 + b;
+        long lowMask = (1L << lowBits) - 1;
+        List<Long> lows = new ArrayList<>();
+        for (long low = 0; low <= lowMask; low++) {
+            int misses = 0;
+            for (Spread s : spreads) {
+                int sb = lowBits(s.limit());
+                if (sb == 0) continue;
+                int m = (1 << sb) - 1;
+                long st = ((low + s.key()) ^ MUL) & lowMask;
+                st = (st * MUL + ADD) & lowMask;
+                boolean ok = ((int) (st >>> 17) & m) == (s.offsetX() & m);
+                st = (st * MUL + ADD) & lowMask;
+                ok &= ((int) (st >>> 17) & m) == (s.offsetZ() & m);
+                if (!ok && ++misses > allowed) break;
+            }
+            if (misses <= allowed) lows.add(low);
+        }
+        if (lows.isEmpty()) return null;
+
+        // the End's pillars: one more bit of their key comes into reach with each further low bit of the seed
+        if (pillars != null) {
+            java.util.BitSet[] keyPrefixes = pillars.prefixes();
+            for (int w = lowBits; w <= 32; w++) {
+                int len = w - 16; // key bits that only need the low w bits of the seed
+                List<Long> next = new ArrayList<>();
+                for (long low : lows) {
+                    for (int bit = 0; bit <= (w == lowBits ? 0 : 1); bit++) {
+                        long cand = w == lowBits ? low : low | ((long) bit << (w - 1));
+                        long m = (1L << w) - 1;
+                        long st = ((cand ^ MUL) & m);
+                        st = (st * MUL + ADD) & m;
+                        st = (st * MUL + ADD) & m;
+                        if (len <= 0 || keyPrefixes[Math.min(16, len)].get((int) ((st >>> 16) & ((1L << Math.min(16, len)) - 1)))) next.add(cand);
+                    }
+                }
+                lows = next;
+                if (lows.isEmpty()) return null;
+            }
+            lowBits = 32;
+        }
+        return new Lows(lows, lowBits);
+    }
+
+    /**
+     * How many high-bit values pass 2 will really try (pass 1 run for real, which takes a moment). The estimate in
+     * {@link #notEnough} assumes every structure narrows the low bits independently; some sets of positions overlap
+     * and leave far more, so this is checked before a long search. 0 if no seed fits at all.
+     */
+    public static long exactSearchSize(List<Clue> clues, int maxMisses) {
+        List<Spread> spreads = new ArrayList<>();
+        PillarKeys pillars = null;
+        for (Clue c : clues) {
+            if (c instanceof Spread s) {
+                if (s.valid()) spreads.add(s);
+                else if (maxMisses-- == 0) return 0;
+            } else if (c instanceof PillarKeys pk && pk.keys().length > 0) {
+                pillars = pk;
+            }
+        }
+        Lows lp = lowParts(spreads, pillars, maxMisses);
+        if (lp == null) return 0;
+        return (long) lp.lows().size() << (48 - lp.bits()); // at most about 2^20 low parts times 2^31
     }
 
     /** The clues a seed doesn't explain (structures that were probably misread). */
