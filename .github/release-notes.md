@@ -5,7 +5,6 @@ Erebus for Minecraft **1.21.11** (Fabric).
 ### New in 0.5.0
 - **Predicted structures on the map**: turn on Show predicted in the Map module (or the Predicted chip on the full map) and pick which kinds. They're worked out from the world seed with the game's own world generation code, and in testing they matched `/locate`. The seed comes from singleplayer, Seed Cracker, or Seed Cracker's new Known seed setting. Vanilla world generation settings only.
 - **Seed Cracker tolerates misreads**: if a few structures were misdetected, it still finds the seed (confirmed against the server's hashed seed) and says which structures it ignored.
-- **One marker per structure**: trial chambers (and other large structures) seen from different sides no longer get two markers. With the seed known, the marker goes on the structure's start. Use Forget structures in the Map module to clear duplicates already on your map.
 - **New minimap**: classic frame, compass letters, mob dots, player names, waypoints pinned to the edge, coordinates / biome / facing / other-dimension lines, and zoom from 0.125x to 8x with zoom in/out keys.
 
 ### New in 0.4.0
