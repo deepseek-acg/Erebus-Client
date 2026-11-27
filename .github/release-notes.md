@@ -2,6 +2,10 @@ Erebus for Minecraft **1.21.11** (Fabric).
 
 **Install:** put the `erebus-<version>.jar` below in your `mods` folder together with [Fabric API](https://modrinth.com/mod/fabric-api) for 1.21.11. Requires Fabric Loader 0.20+ and Java 21. Open the dashboard with Right Shift.
 
+### New in 0.7.0
+- **Seed Cracker handles servers with their own structure salts**: Spigot and Paper can give each kind of structure its own salt (`seed-village`, `seed-desert`... in `spigot.yml`), a common way to protect a seed. If no seed fits the game's own settings, Seed Cracker now tries again with each kind on its own salt, tied to the seed by what those settings don't change: the End pillars, how each structure's first piece came out, outposts' extra roll and mineshafts. It then works out each kind's salt, says which settings were changed, and predicted structures on the map use them. Read the End pillars on such servers: they're effectively required. Turn it off with Custom structure salts.
+- **Spots a fake hashed seed**: when seeds fit but none matches the hashed seed the server sends, it says the server may be sending a fake one.
+
 ### New in 0.6.5
 - **Better visuals**: purely cosmetic extras for every module where they make sense. The combat modules show what they're doing (the anchor sequence's step, charges, shield and blast radius; Crystal Aura's spot, crystal, blast and the damage it should do), Stash ESP gets a shape for each kind of find and beams over bases, Freecam marks your body, Logout Spots draws a ghost, Seed Cracker outlines the start chunks it read, and more. On by default: turn them off on the Client page, or per module with each module's Better visuals setting.
 

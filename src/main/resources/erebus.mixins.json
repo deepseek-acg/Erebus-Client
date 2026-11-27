@@ -14,7 +14,8 @@
     "JigsawAccess$Element",
     "JigsawAccess$Structure",
     "KeyboardHandlerMixin",
-    "MouseHandlerMixin"
+    "MouseHandlerMixin",
+    "StructurePlacementAccess"
   ],
   "injectors": {
     "defaultRequire": 1

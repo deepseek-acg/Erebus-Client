@@ -4,6 +4,7 @@ import dev.erebus.client.mixin.BiomeManagerAccessor;
 import dev.erebus.client.module.Category;
 import dev.erebus.client.module.Module;
 import dev.erebus.client.notify.Notifications;
+import dev.erebus.client.seed.SaltSolver;
 import dev.erebus.client.seed.SeedData;
 import dev.erebus.client.seed.SeedSolver;
 import dev.erebus.client.seed.StructureScanner;
@@ -53,6 +54,7 @@ public final class SeedCracker extends Module {
     private final BoolSetting autoCrack;
     private final BoolSetting announce;
     private final BoolSetting tolerate;
+    private final BoolSetting customSalts;
     private final dev.erebus.client.setting.TextSetting knownSeed;
 
     private SeedData data;
@@ -63,8 +65,8 @@ public final class SeedCracker extends Module {
 
     public SeedCracker() {
         super("Seed Cracker", "Works out the world seed from desert pyramids, jungle temples, swamp huts, igloos, villages, pillager "
-                + "outposts, mineshafts, buried treasure and the End's pillars you come across. Proof of concept: needs a server with vanilla world "
-                + "generation settings.", Category.WORLD);
+                + "outposts, mineshafts, buried treasure and the End's pillars you come across, also on Spigot and Paper servers that set their "
+                + "own structure salts. Needs terrain from Minecraft's own world generator.", Category.WORLD);
         group("Collect");
         pyramids = add(new BoolSetting("Desert pyramids", "Record desert pyramids.", true));
         jungleTemples = add(new BoolSetting("Jungle temples", "Record jungle temples.", true));
@@ -90,6 +92,10 @@ public final class SeedCracker extends Module {
         tolerate = add(new BoolSetting("Allow misreads", "If no seed fits every structure, look for one that fits all but up to 3 of them, "
                 + "checked against the server's hashed seed, and ignore the ones that don't fit. Needs a few more structures than "
                 + "an exact fit.", true));
+        customSalts = add(new BoolSetting("Custom structure salts", "If no seed fits with the game's own structure settings, try "
+                + "again assuming the server gave each kind of structure its own salt (Spigot's and Paper's seed-village, seed-desert... "
+                + "settings, a common way to protect a seed). That needs the End pillars, plus mineshafts, villages, igloos or outposts, "
+                + "which are checked against the seed itself. Each kind's salt is worked out too, so predicted structures stay right.", true));
         knownSeed = add(new dev.erebus.client.setting.TextSetting("Known seed", "If you already know this server's seed, enter it here: "
                 + "it's used for predicted structures on the map instead of cracking. Leave empty to crack it.", "", 24));
         instance = this;
@@ -124,13 +130,15 @@ public final class SeedCracker extends Module {
         if (m != null && m.data != null && key.equals(m.data.key())) return m.data.worldSeed;
         if (cachedKey == null || !cachedKey.equals(key)) {
             cachedKey = key;
-            cachedSeed = SeedData.load(key).worldSeed;
+            cachedData = SeedData.load(key);
+            cachedSeed = cachedData.worldSeed;
         }
         return cachedSeed;
     }
 
     private static String cachedKey;
     private static Long cachedSeed;
+    private static SeedData cachedData;
 
     @Override
     public List<Action> actions() {
@@ -194,10 +202,23 @@ public final class SeedCracker extends Module {
         }
         checkTemplateStarts();
         if (autoCrack.get() && !cracking && data.worldSeed == null && knownSeed.get().isBlank() && attemptKey() != attemptedWith
-                && SeedSolver.notEnough(data.clues(true)) == null) {
+                && (data.salted() && customSalts.get() ? saltedReady() : SeedSolver.notEnough(data.clues(true)) == null)) {
             crack(false);
         }
         info = status();
+    }
+
+    private int saltCheckedWith = -1;
+    private boolean saltReady;
+
+    /** Whether there's enough to try with each kind of structure on its own salt (worked out again only when something new is recorded). */
+    private boolean saltedReady() {
+        int key = attemptKey();
+        if (key != saltCheckedWith) {
+            saltCheckedWith = key;
+            saltReady = SaltSolver.notEnough(data.saltAnchors(), data.saltGroups()) == null;
+        }
+        return saltReady;
     }
 
     private static final StructureScanner.Kind[] TEMPLATE_KINDS = {StructureScanner.Kind.IGLOO, StructureScanner.Kind.VILLAGE,
@@ -431,13 +452,16 @@ public final class SeedCracker extends Module {
         if (data.has(f.kind(), f.chunkX(), f.chunkZ())) return;
         var m = f.marker();
         SeedData.Entry entry = new SeedData.Entry(f.kind().name(), f.chunkX(), f.chunkZ(), m.getX(), m.getY(), m.getZ(), false, f.piece(), f.rotation());
-        boolean misfit = data.worldSeed != null && !SeedSolver.fits(data.worldSeed, entry.clues());
+        boolean misfit = data.worldSeed != null && !SeedSolver.fits(data.worldSeed, data.fitClues(entry));
         data.structures.add(entry.withRejected(misfit));
         data.save();
         if (misfit) {
             if (announce.get()) chat(f.kind().label + " at " + m.getX() + ", " + m.getZ() + " doesn't fit the seed found, so it was probably "
                     + "misread; ignored.");
             return;
+        }
+        if (data.worldSeed != null && data.salted() && f.kind().spread() && (data.salts == null || !data.salts.containsKey(f.kind().name()))) {
+            learnSalt(data, f.kind());
         }
         int spreads = (int) data.structures.stream().filter(e -> !e.rejected() && !e.kind().equals(StructureScanner.Kind.BURIED_TREASURE.name())).count();
         String piece = f.piece() == null ? ""
@@ -476,7 +500,9 @@ public final class SeedCracker extends Module {
 
     private void crack(boolean byHand) {
         if (data == null || cracking) return;
-        String why = SeedSolver.notEnough(data.clues(true));
+        // a server already known to use its own salts goes straight to that
+        boolean saltsOnly = data.salted() && customSalts.get();
+        String why = saltsOnly ? SaltSolver.notEnough(data.saltAnchors(), data.saltGroups()) : SeedSolver.notEnough(data.clues(true));
         if (why != null) {
             if (byHand) chat("Not enough structures yet: " + why + ".");
             return;
@@ -486,8 +512,12 @@ public final class SeedCracker extends Module {
         progress.set(0);
         SeedData d = data;
         List<SeedSolver.Clue> all = d.clues(true);
+        List<SeedSolver.Clue> anchors = d.saltAnchors();
+        List<SaltSolver.Group> groups = d.saltGroups();
+        boolean trySalts = customSalts.get();
         long hashed = d.hashedSeed;
-        if (announce.get() || byHand) chat("Cracking with " + d.structures.size() + " structures...");
+        if (announce.get() || byHand) chat("Cracking with " + d.structures.size() + " structures"
+                + (saltsOnly ? ", each kind on its own salt" : "") + "...");
         boolean allowMisreads = tolerate.get();
         boolean hasPillars = all.stream().anyMatch(c -> c instanceof SeedSolver.PillarKeys);
         Thread t = new Thread(() -> {
@@ -495,7 +525,8 @@ public final class SeedCracker extends Module {
             Long world = null, structure = null;
             List<SeedSolver.Clue> misfits = List.of();
             boolean usedPillars = false;
-            try {
+            boolean anyFit = false, refused = false;
+            if (!saltsOnly) try {
                 // with the End's pillars first; if nothing fits, without them (a server's End can have its own seed)
                 List<List<SeedSolver.Clue>> tries = new ArrayList<>();
                 tries.add(all);
@@ -526,12 +557,14 @@ public final class SeedCracker extends Module {
                         int k = tol[0], c = tol[1];
                         // some sets of positions pin down the low bits much less than usual: don't grind for minutes
                         if (SeedSolver.exactSearchSize(clues, k) > MAX_SEARCH) {
+                            if (k == 0 && c == 0) refused = true; // an exact fit can't be ruled out
                             if (k == 0) message = "Not enough to crack quickly yet: these structures pin down the seed's low bits less than "
                                     + "usual. Find another temple, hut, igloo or outpost (or read the End pillars).";
                             break;
                         }
                         List<SeedSolver.Candidate> found = SeedSolver.structureSeeds(clues, MAX_CANDIDATES, progress, k, c);
                         if (found.isEmpty()) continue;
+                        anyFit = true;
                         if (hashed == 0) {
                             if (found.size() == 1) structure = found.get(0).seed();
                             message = "The server doesn't send a hashed seed, so only the structure seed (low 48 bits) can be found: "
@@ -551,11 +584,35 @@ public final class SeedCracker extends Module {
                                     + "seed here)." : null;
                             break;
                         }
-                        message = found.size() + " structure seeds fit, but none matches the server's hashed seed. Find a few more structures.";
+                        message = found.size() + " structure seeds fit, but none matches the server's hashed seed. Find a few more structures "
+                                + "(if this keeps happening, the server may send a fake hashed seed).";
                     }
                 }
             } catch (Throwable e) {
                 message = "Cracking failed: " + e;
+            }
+            // nothing fits the game's own salts: try each kind of structure on its own salt (Spigot's seed-village...)
+            // (on a server with the game's own salts the real seed always fits, so seeds that fit without matching the hashed
+            // seed point the same way)
+            if (saltsOnly || (trySalts && world == null && !refused && (!anyFit || hashed != 0))) {
+                String saltWhy = SaltSolver.notEnough(anchors, groups);
+                if (saltWhy == null) {
+                    progress.set(0);
+                    if (!saltsOnly) mc.execute(() -> {
+                        if (announce.get() || byHand) chat("No seed fits with the game's own structure settings; trying each kind of structure "
+                                + "on its own salt (as Spigot's seed-village, seed-desert... settings do)...");
+                    });
+                    SaltSolver.Outcome o;
+                    try {
+                        o = SaltSolver.solve(anchors, groups, hashed, BiomeManager::obfuscateSeed, progress);
+                    } catch (Throwable e) {
+                        o = new SaltSolver.Outcome(null, null, List.of(), true, "Cracking failed: " + e, 0);
+                    }
+                    SaltSolver.Outcome out = o;
+                    mc.execute(() -> finishSalted(d, out, byHand));
+                    return;
+                }
+                if (!saltsOnly && message != null) message += " If it set its own structure salts, " + saltWhy + ".";
             }
             String msg = message;
             Long w = world, s = structure;
@@ -603,22 +660,142 @@ public final class SeedCracker extends Module {
         if (message != null && (announce.get() || byHand)) chat(message);
     }
 
-    /** Checks the seed with the game's own structure placement code (and pillar shuffle). */
+    private void finishSalted(SeedData d, SaltSolver.Outcome o, boolean byHand) {
+        cracking = false;
+        if (o.structureSeed() == null) {
+            d.save();
+            if (o.message() != null && (announce.get() || byHand)) chat(o.message());
+            return;
+        }
+        Boolean was = d.customSalts;
+        java.util.Map<String, Integer> wasSalts = d.salts;
+        boolean wasShaft = d.shaftSalted;
+        d.customSalts = true;
+        d.salts = new java.util.HashMap<>();
+        for (SaltSolver.Salt s : o.salts()) if (s.salt() != null) d.salts.put(s.name(), s.salt());
+        d.shaftSalted = !o.shaftRolls();
+        d.structureSeed = o.structureSeed();
+        Long world = o.worldSeed();
+        if (world != null && !verified(d, world, true)) {
+            d.customSalts = was;
+            d.salts = wasSalts;
+            d.shaftSalted = wasShaft;
+            d.save();
+            chat("Found " + world + " but it doesn't reproduce every structure; ignoring it.");
+            return;
+        }
+        if (world != null) {
+            d.worldSeed = world;
+            cachedKey = null; // the salts and seed the map uses changed
+            Notifications.push(name, "Seed found: " + world, Notifications.Kind.SUCCESS);
+            seedMessage(world, (int) d.counted(), true);
+        }
+        d.save();
+        chat(saltReport(o));
+        if (o.message() != null) chat(o.message());
+    }
+
+    /** Which kinds of structure have their own salt here, and the settings they come from. */
+    private static String saltReport(SaltSolver.Outcome o) {
+        List<String> custom = new ArrayList<>(), standard = new ArrayList<>(), unknown = new ArrayList<>();
+        for (SaltSolver.Salt s : o.salts()) {
+            StructureScanner.Kind k = StructureScanner.Kind.valueOf(s.name());
+            if (s.salt() == null) unknown.add(k.label.toLowerCase(java.util.Locale.ROOT) + " (" + s.note() + ")");
+            else if (s.custom()) custom.add(k.label + " " + s.salt() + " (" + s.setting() + ")");
+            else standard.add(k.label.toLowerCase(java.util.Locale.ROOT) + (s.note() != null ? " (" + s.note() + ")" : ""));
+        }
+        StringBuilder b = new StringBuilder("This server uses its own structure salts. ");
+        if (!custom.isEmpty()) b.append("Custom: ").append(String.join("; ", custom)).append(". ");
+        if (!standard.isEmpty()) b.append("The game's own: ").append(String.join(", ", standard)).append(". ");
+        if (!unknown.isEmpty()) b.append("Not known yet: ").append(String.join(", ", unknown))
+                .append("; worked out as more are found. ");
+        if (!o.shaftRolls()) b.append("Mineshafts have their own salt too (seed-mineshaft), so only their room sizes count. ");
+        b.append("Predicted structures on the map only show kinds whose salt is known (and strongholds).");
+        return b.toString();
+    }
+
+    private final Set<String> learning = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** Works out a kind's salt in the background once enough of it is found, now that the seed is known. */
+    private void learnSalt(SeedData d, StructureScanner.Kind kind) {
+        if (d.worldSeed == null || !learning.add(kind.name())) return;
+        long seed = d.worldSeed;
+        SaltSolver.Group g = d.saltGroups().stream().filter(x -> x.name().equals(kind.name())).findFirst().orElse(null);
+        if (g == null || g.spreads().size() < 2) {
+            learning.remove(kind.name());
+            return;
+        }
+        Thread t = new Thread(() -> {
+            Integer salt = null;
+            try {
+                salt = SaltSolver.saltOf(seed, g);
+            } catch (Throwable ignored) {
+            }
+            Integer found = salt;
+            mc.execute(() -> {
+                learning.remove(kind.name());
+                if (found == null || d.worldSeed == null || d.worldSeed != seed) return;
+                if (d.salts == null) d.salts = new java.util.HashMap<>();
+                d.salts.put(kind.name(), found);
+                d.save();
+                cachedKey = null;
+                chat("Worked out the " + kind.label.toLowerCase(java.util.Locale.ROOT) + " salt: " + found
+                        + (found == kind.salt ? " (the game's own)" : " (" + kind.spigotSetting + ")") + ". Predicted "
+                        + kind.label.toLowerCase(java.util.Locale.ROOT) + "s now show on the map.");
+            });
+        }, "Erebus salt finder");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        t.start();
+    }
+
+    /**
+     * The structure salts for where you are, by structure set ("villages", "desert_pyramids"...), when this server
+     * turned out to use its own: only the ones known. Null when it uses the game's own (or isn't known not to).
+     */
+    public static java.util.Map<String, Integer> knownSalts() {
+        try {
+            if (mc.getSingleplayerServer() != null) return null;
+        } catch (Throwable ignored) {
+        }
+        knownSeed(); // refreshes the cached data for this server
+        SeedCracker m = instance;
+        SeedData d = m != null && m.data != null && SeedData.serverKey().equals(m.data.key()) ? m.data : cachedData;
+        if (d == null || !d.salted()) return null;
+        java.util.Map<String, Integer> out = new java.util.HashMap<>();
+        if (d.salts != null) {
+            for (var e : d.salts.entrySet()) {
+                try {
+                    out.put(StructureScanner.Kind.valueOf(e.getKey()).set, e.getValue());
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Checks the seed with the game's own structure placement code (and pillar shuffle), with this server's salts. */
     private static boolean verified(SeedData d, long seed, boolean pillars) {
         for (SeedData.Entry e : d.structures) {
             StructureScanner.Kind k = e.kindOrNull();
             if (k == null || e.rejected() || k == StructureScanner.Kind.BURIED_TREASURE) continue;
+            if (k == StructureScanner.Kind.MINESHAFT && d.salted() && d.shaftSalted) continue;
+            Integer salt = !d.salted() || !k.spread() ? Integer.valueOf(k.salt) : d.salts == null ? null : d.salts.get(k.name());
+            int use = salt == null ? k.salt : salt;
             RandomSpreadStructurePlacement placement = switch (k) {
                 case OUTPOST -> new RandomSpreadStructurePlacement(net.minecraft.core.Vec3i.ZERO,
                         net.minecraft.world.level.levelgen.structure.placement.StructurePlacement.FrequencyReductionMethod.LEGACY_TYPE_1, 0.2F,
-                        k.salt, java.util.Optional.empty(), k.spacing, k.separation, RandomSpreadType.LINEAR);
+                        use, java.util.Optional.empty(), k.spacing, k.separation, RandomSpreadType.LINEAR);
                 case MINESHAFT -> new RandomSpreadStructurePlacement(net.minecraft.core.Vec3i.ZERO,
                         net.minecraft.world.level.levelgen.structure.placement.StructurePlacement.FrequencyReductionMethod.LEGACY_TYPE_3, 0.004F,
-                        k.salt, java.util.Optional.empty(), k.spacing, k.separation, RandomSpreadType.LINEAR);
-                default -> new RandomSpreadStructurePlacement(k.spacing, k.separation, RandomSpreadType.LINEAR, k.salt);
+                        use, java.util.Optional.empty(), k.spacing, k.separation, RandomSpreadType.LINEAR);
+                default -> new RandomSpreadStructurePlacement(k.spacing, k.separation, RandomSpreadType.LINEAR, use);
             };
-            ChunkPos p = placement.getPotentialStructureChunk(seed, e.chunkX(), e.chunkZ());
-            if (p.x != e.chunkX() || p.z != e.chunkZ()) return false;
+            // a kind whose salt isn't known yet only counts for what doesn't depend on it
+            if (salt != null) {
+                ChunkPos p = placement.getPotentialStructureChunk(seed, e.chunkX(), e.chunkZ());
+                if (p.x != e.chunkX() || p.z != e.chunkZ()) return false;
+            }
             if (!placement.applyAdditionalChunkRestrictions(e.chunkX(), e.chunkZ(), seed)) return false;
         }
         if (pillars && d.pillarKeys != null) {
@@ -654,6 +831,10 @@ public final class SeedCracker extends Module {
         data.worldSeed = null;
         data.pillars = null;
         data.pillarKeys = null;
+        data.customSalts = null;
+        data.salts = null;
+        data.shaftSalted = false;
+        cachedKey = null;
         attemptedWith = -1;
         data.save();
         chat("Forgot everything recorded for " + data.key() + ".");

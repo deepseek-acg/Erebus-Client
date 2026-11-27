@@ -66,7 +66,7 @@ obsidian, XP bottles), Armor, and Notifications.
 | Module | Category | What it does |
 | --- | --- | --- |
 | Map | World | Records a map of every chunk you load, per server and dimension, and recognises structures (trial chambers, ancient cities, strongholds, monuments, fortresses, bastions, end cities, temples, swamp huts and more), each confirmed against its real layout so builds aren't flagged. On by default. |
-| Seed Cracker | World | Works out the world seed from desert pyramids, jungle temples, swamp huts, igloos, villages, pillager outposts, mineshafts, buried treasure and the End's pillars. Proof of concept for servers with vanilla world generation settings. |
+| Seed Cracker | World | Works out the world seed from desert pyramids, jungle temples, swamp huts, igloos, villages, pillager outposts, mineshafts, buried treasure and the End's pillars, including on Spigot and Paper servers that set their own structure salts (and works those salts out). |
 | Stash ESP | Basefinding | Outlines and tracers to storage and other base giveaways (chests, shulkers, ender chests, furnaces, villagers, item frames, chest minecarts...). Alerts when an area looks like a base or a stash, marks it on the map and logs it to `erebus/finds.txt`. |
 | Player Blocks | Basefinding | Highlights blocks the world never generates (concrete, shulkers, beacons, mineral blocks, redstone parts...) and building materials where they don't belong, skipping natural structures and biomes where they occur naturally. Lets Stash ESP tell bases from stashes. |
 | Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
@@ -270,9 +270,46 @@ the hashed seed settles whatever few candidates are left.
 **Why not dungeons.** Since 1.18, features like dungeons are placed with a different random
 generator (Xoroshiro) seeded from the full 64-bit seed, which can't be run backwards the way the
 structures' generator can, so a dungeon can only confirm a seed, not help find it. Dungeons in chunks
-generated before 1.18 would work, but that needs the version that generated them. It's a proof of concept for vanilla settings:
-servers that change structure salts (`spigot.yml`) or hide the hashed seed need more work. Actions in
-the dashboard: Crack now, Copy seed, Forget this server.
+generated before 1.18 would work, but that needs the version that generated them. Actions in the
+dashboard: Crack now, Copy seed, Forget this server.
+
+### Servers with their own structure salts
+
+Spigot and Paper let a server replace each structure type's salt (`seed-village`, `seed-desert`,
+`seed-igloo`, `seed-jungle`, `seed-swamp`, `seed-outpost`... in `spigot.yml`, plus Paper's
+`seed-buriedtreasure` and `seed-mineshaft`), a common way to protect a seed. Then where each type's
+structures land only says something about *seed + that type's salt*, so types don't agree with each
+other and nothing fits the game's own settings. With **Custom structure salts** on (the default), the
+cracker then tries again with each type on its own unknown salt (`seed/SaltSolver`):
+
+- **Anchors.** Those settings never touch the End pillars, how a structure's first piece came out
+  (the rotation of an igloo, village or outpost and a village's centre), an outpost's extra roll, or
+  a mineshaft's room size (or, unless `seed-mineshaft` is set, where mineshafts are). Those tie the
+  structures to the seed itself.
+- **Per type.** Each type with enough finds is cracked on its own as *seed + salt*.
+- **Listing seeds.** The End pillars fix 16 of the seed's low 32 bits. With them and one cracked type,
+  each pillar-allowed low half gives exactly one seed (about 65,000 to check). With the pillars alone
+  it's about 4 billion, checked in 15–25 seconds. The anchors drop almost all of them, and the
+  server's hashed seed picks the full seed from what's left, as usual.
+- **Salts.** With the seed known, each type's salt follows from its finds (about 4–5 of a type pin it
+  down), and is worked out again as more are found. Chat lists which types have custom salts and the
+  setting each comes from, whether mineshafts have their own salt, and whether the hashed seed looks
+  fake.
+- **Predictions.** Predicted structures on the map use the salts found. Types whose salt isn't known
+  yet aren't predicted (strongholds are, they don't use a salt).
+
+**What it takes.** The End pillars are effectively required. A type's own positions barely pin down
+the top 13 or so bits of its *seed + salt* (pyramids, huts, igloos and outposts pick their spot with
+`nextInt(24)`, villages with `nextInt(26)`, and values 3·2^35 or 13·2^35 apart place them almost
+identically), so even a dozen of one type leave dozens of possibilities, each worth 4 billion seeds
+without the pillars. Beyond the pillars, about 20 bits of anchors: 2 mineshafts with their room sizes,
+or a handful of villages, igloos and outposts. In testing, on a server whose datapack changed the
+salts of villages, pyramids, igloos, huts, jungle temples and outposts, the End pillars, 7 villages,
+an igloo, 2 outposts, a swamp hut and 3 mineshafts gave the exact seed and the village salt. The
+outpost salt followed after 3 more outposts. Offline it also found the seed with Paper's mineshaft
+salt changed (from the rooms' sizes).
+
+Servers whose terrain doesn't come from Minecraft's own generator can't be cracked this way.
 
 ## Map
 

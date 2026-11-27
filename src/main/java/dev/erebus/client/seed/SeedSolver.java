@@ -159,16 +159,16 @@ public final class SeedSolver {
     // Forward: what a seed generates (also used to check results)
     // =====================================================================================================
 
-    private static long scramble(long seed) {
+    static long scramble(long seed) {
         return (seed ^ MUL) & MASK48;
     }
 
-    private static long step(long state) {
+    static long step(long state) {
         return (state * MUL + ADD) & MASK48;
     }
 
     /** java.util.Random#nextInt(bound) on a raw 48-bit state; returns {value, newState} packed: value in [0,bound). */
-    private static long nextInt(long[] state, int bound) {
+    static long nextInt(long[] state, int bound) {
         if ((bound & -bound) == bound) {
             state[0] = step(state[0]);
             return (int) ((bound * (state[0] >>> 17)) >> 31);
@@ -206,7 +206,7 @@ public final class SeedSolver {
     }
 
     /** The LCG state {@code setLargeFeatureSeed(seed, chunkX, chunkZ)} leaves. */
-    private static long largeFeatureState(long seed, int chunkX, int chunkZ) {
+    static long largeFeatureState(long seed, int chunkX, int chunkZ) {
         long st = scramble(seed);
         st = step(st);
         int a1 = (int) (st >>> 16);
@@ -352,7 +352,7 @@ public final class SeedSolver {
         return (long) Math.min(Long.MAX_VALUE / 2, survivors * Math.pow(2, 48 - width));
     }
 
-    private static int lowBits(int limit) {
+    static int lowBits(int limit) {
         if ((limit & -limit) == limit) return 0; // a power of two takes the top bits, not the low ones
         return Math.min(3, Integer.numberOfTrailingZeros(limit));
     }
@@ -481,14 +481,14 @@ public final class SeedSolver {
     }
 
     /** The low parts of the seed that pass 1 leaves, and how many bits they are. */
-    private record Lows(List<Long> lows, int bits) {
+    record Lows(List<Long> lows, int bits) {
     }
 
     /**
      * Pass 1: the low bits every structure's offsets allow (with up to {@code allowed} that don't), carried on to 32
      * bits with the End's pillars if there are any. Null if nothing's left.
      */
-    private static Lows lowParts(List<Spread> spreads, PillarKeys pillars, int allowed) {
+    static Lows lowParts(List<Spread> spreads, PillarKeys pillars, int allowed) {
         int b = 0;
         for (Spread s : spreads) b = Math.max(b, lowBits(s.limit()));
         int lowBits = 17 + b;
