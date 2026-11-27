@@ -36,8 +36,22 @@ public final class MineshaftRooms {
         return false;
     }
 
+    /**
+     * A start room: its corner at floor height, and its width along x and z (8 to 13, rolled from the seed right
+     * after the chunk's mineshaft roll), or -1 where it couldn't be measured or the chunk predates 1.18 (which
+     * rolled one more number first).
+     */
+    public record Room(BlockPos corner, int sizeX, int sizeZ) {
+    }
+
     /** Where the start room in chunk (cx, cz) is (its corner, at floor height), or null. */
     public static BlockPos find(Level level, int cx, int cz) {
+        Room r = findRoom(level, cx, cz);
+        return r == null ? null : r.corner();
+    }
+
+    /** Like {@link #find}, with the room's size. */
+    public static Room findRoom(Level level, int cx, int cz) {
         if (!(level.getChunkSource() instanceof net.minecraft.client.multiplayer.ClientChunkCache cache)) return null;
         LevelChunk chunk = cache.getChunk(cx, cz, ChunkStatus.FULL, false);
         if (chunk == null) return null;
@@ -50,7 +64,10 @@ public final class MineshaftRooms {
             // quick look first: air in three corners of the band and a solid floor under its middle
             if (!air(chunk, p, x0, f + 1, z0) || !air(chunk, p, x0 + 7, f + 3, z0 + 7) || !air(chunk, p, x0 + 7, f + 2, z0)
                     || !air(chunk, p, x0, f + 2, z0 + 7) || !solid(chunk, p, x0 + 3, f, z0 + 4)) continue;
-            if (room(level, chunk, p, x0, f, z0)) return new BlockPos(x0, f, z0);
+            if (room(level, chunk, p, x0, f, z0)) {
+                boolean old = oldChunk(chunk);
+                return new Room(new BlockPos(x0, f, z0), old ? -1 : width(level, p, x0, f, z0, true), old ? -1 : width(level, p, x0, f, z0, false));
+            }
         }
         return null;
     }
@@ -90,6 +107,46 @@ public final class MineshaftRooms {
             }
         }
         return shaft >= 4;
+    }
+
+    /**
+     * How far the band of air runs from the corner before it meets the far wall, along x ({@code alongX}) or z: the
+     * most common length (8 to 13) over the band's rows, which corridor openings and caves only make longer or
+     * shorter here and there. -1 if no length is clearly the most common.
+     */
+    private static int width(Level level, BlockPos.MutableBlockPos p, int x0, int f, int z0, boolean alongX) {
+        int[] count = new int[14];
+        int rows = 0;
+        for (int across = 0; across < 8; across++) {
+            for (int dy = 1; dy <= 3; dy++) {
+                int run = 0;
+                while (run < 14) {
+                    int x = alongX ? x0 + run : x0 + across, z = alongX ? z0 + across : z0 + run;
+                    if (!level.getBlockState(p.set(x, f + dy, z)).isAir()) break;
+                    run++;
+                }
+                rows++;
+                if (run >= 8 && run <= 13) count[run]++;
+            }
+        }
+        int best = -1;
+        for (int w = 8; w <= 13; w++) if (best < 0 || count[w] > count[best]) best = w;
+        int second = 0;
+        for (int w = 8; w <= 13; w++) if (w != best) second = Math.max(second, count[w]);
+        return count[best] * 3 >= rows && count[best] >= 2 * second + 2 ? best : -1;
+    }
+
+    /** Whether the chunk was generated before 1.18: it keeps its old bedrock floor at y 0-4 (as Old Chunks tells). */
+    private static boolean oldChunk(LevelChunk chunk) {
+        int idx = chunk.getSectionIndex(0);
+        LevelChunkSection[] sections = chunk.getSections();
+        if (idx < 0 || idx >= sections.length) return false;
+        LevelChunkSection s = sections[idx];
+        if (s == null || s.hasOnlyAir() || !s.maybeHas(st -> st.is(Blocks.BEDROCK))) return false;
+        for (int y = 0; y < 5; y++) for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
+            if (s.getBlockState(x, y, z).is(Blocks.BEDROCK)) return true;
+        }
+        return false;
     }
 
     private static boolean shaftBlock(Block b) {

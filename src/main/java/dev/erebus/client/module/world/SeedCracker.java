@@ -367,8 +367,9 @@ public final class SeedCracker extends Module {
             return;
         }
         int spreads = (int) data.structures.stream().filter(e -> !e.rejected() && !e.kind().equals(StructureScanner.Kind.BURIED_TREASURE.name())).count();
-        String piece = f.piece() == null || f.kind() != StructureScanner.Kind.VILLAGE ? ""
-                : " (" + f.piece().replaceAll(".*/", "").replace(".nbt", "").replace('_', ' ') + ")";
+        String piece = f.piece() == null ? ""
+                : f.kind() == StructureScanner.Kind.VILLAGE ? " (" + f.piece().replaceAll(".*/", "").replace(".nbt", "").replace('_', ' ') + ")"
+                : f.kind() == StructureScanner.Kind.MINESHAFT && !f.piece().contains("-") ? " (" + f.piece() + ")" : "";
         String detail = f.kind().label + piece + " at " + m.getX() + ", " + m.getZ() + " (" + spreads + " structures, "
                 + (data.counted() - spreads) + " treasures)";
         Notifications.push(name, detail, Notifications.Kind.INFO);

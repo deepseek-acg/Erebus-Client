@@ -17,7 +17,8 @@ public final class SeedData {
 
     /**
      * A recorded structure. {@code rejected}: it doesn't fit the seed (most likely misread), so it's left out.
-     * {@code piece} and {@code rotation}: how its first piece came out, if known (null in older files).
+     * {@code piece} and {@code rotation}: how its first piece came out, if known (null in older files): a
+     * village's town centre template, or a mineshaft's start room size as "room 10x12" (-1 where unmeasured).
      */
     public record Entry(String kind, int chunkX, int chunkZ, int x, int y, int z, boolean rejected, String piece, Integer rotation) {
         public Entry withRejected(boolean r) {

@@ -223,8 +223,12 @@ cracks the seed by itself once it has enough. Nothing is sent to the server.
   chunk: a flat band of cave air 3 high over 8 to 13 blocks each way, with a dome of air on top. A
   room counts when that band is there at the corner, on a mostly solid floor, with walls just outside
   its near sides, the dome open above its middle (a room a player dug has a flat ceiling there) and
-  mineshaft woodwork, rails or cobwebs around it. Separate mineshafts a few chunks apart are normal:
-  their corridors run into each other and look like one. The client gets the blocks underground with every chunk, so
+  mineshaft woodwork, rails or cobwebs around it. Every mineshaft has exactly one such room, so
+  several rooms in what looks like one huge network are separate mineshafts whose corridors ran into
+  each other (they sprawl up to about 10 chunks, so that's common). The room's width along x and z
+  (8 to 13 each) is rolled from the seed too, so it's measured and checked: a room that isn't really
+  a mineshaft's start has the wrong size 35 times in 36, and a real one adds about 5 bits. (Chunks
+  from before 1.18 rolled one more number first, so there only the mineshaft itself counts.) The client gets the blocks underground with every chunk, so
   you don't need to go down. Each is worth about as much as a village, they're everywhere, and the
   same rule placed them in chunks from 1.12 on. They only check seeds rather than narrow the low bits,
   so they need at least one temple, igloo, outpost, a few villages or the End pillars alongside.

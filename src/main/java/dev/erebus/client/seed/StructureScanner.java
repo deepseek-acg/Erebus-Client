@@ -59,6 +59,10 @@ public final class StructureScanner {
          * rotation of an igloo, village or outpost, and which centre a village has.
          */
         public List<SeedSolver.Clue> clues(int chunkX, int chunkZ, String piece, Integer rotation) {
+            if (this == MINESHAFT && piece != null) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^room (-?\\d+)x(-?\\d+)$").matcher(piece);
+                if (m.find()) return List.of(new SeedSolver.Mineshaft(chunkX, chunkZ, Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2))));
+            }
             List<SeedSolver.Clue> out = new java.util.ArrayList<>(clues(chunkX, chunkZ));
             if (rotation != null && rotation >= 0 && rotation < 4 && (this == IGLOO || this == VILLAGE || this == OUTPOST)) {
                 int[] pool = this == VILLAGE && piece != null ? TemplateStarts.villageCentreSlots(piece) : null;

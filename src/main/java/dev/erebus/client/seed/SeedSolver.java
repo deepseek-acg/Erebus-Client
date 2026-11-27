@@ -101,7 +101,14 @@ public final class SeedSolver {
      * with {@code setLargeFeatureSeed(seed, chunkX, chunkZ)}. The same roll decided mineshafts in 1.12 to 1.17
      * chunks too.
      */
-    public record Mineshaft(int chunkX, int chunkZ) implements Clue {
+    public record Mineshaft(int chunkX, int chunkZ, int sizeX, int sizeZ) implements Clue {
+        public Mineshaft(int chunkX, int chunkZ) {
+            this(chunkX, chunkZ, -1, -1);
+        }
+
+        double bits() {
+            return Math.log(250) / Math.log(2) + (sizeX >= 0 ? Math.log(6) / Math.log(2) : 0) + (sizeZ >= 0 ? Math.log(6) / Math.log(2) : 0);
+        }
     }
 
     /**
@@ -224,6 +231,21 @@ public final class SeedSolver {
         return false;
     }
 
+    /**
+     * Whether a mineshaft starts in this chunk with a start room of the size seen: right after the roll's
+     * {@code nextDouble()}, the room takes {@code 8 + nextInt(6)} for its x width, {@code nextInt(6)} for its height
+     * and {@code 8 + nextInt(6)} for its z width (1.18 on).
+     */
+    public static boolean mineshaftFits(long seed, Mineshaft m) {
+        if (!mineshaftRoll(seed, m.chunkX(), m.chunkZ())) return false;
+        if (m.sizeX() < 0 && m.sizeZ() < 0) return true;
+        long[] st = {step(step(largeFeatureState(seed, m.chunkX(), m.chunkZ())))}; // past nextDouble's two draws
+        int sx = 8 + (int) nextInt(st, 6);
+        nextInt(st, 6);
+        int sz = 8 + (int) nextInt(st, 6);
+        return (m.sizeX() < 0 || sx == m.sizeX()) && (m.sizeZ() < 0 || sz == m.sizeZ());
+    }
+
     /** Whether a mineshaft starts in this chunk: {@code setLargeFeatureSeed} then {@code nextDouble() < 0.004}. */
     public static boolean mineshaftRoll(long seed, int chunkX, int chunkZ) {
         long st = largeFeatureState(seed, chunkX, chunkZ);
@@ -253,7 +275,7 @@ public final class SeedSolver {
             } else if (c instanceof PillarKeys pk) {
                 if (!pk.allows(pillarKey(seed))) return false;
             } else if (c instanceof Mineshaft m) {
-                if (!mineshaftRoll(seed, m.chunkX(), m.chunkZ())) return false;
+                if (!mineshaftFits(seed, m)) return false;
             } else if (c instanceof StartRoll r) {
                 if (!startRoll(seed, r)) return false;
             }
@@ -282,8 +304,8 @@ public final class SeedSolver {
                 high += -Math.log(ch.frequency()) / Math.log(2);
             } else if (c instanceof OutpostRoll) {
                 high += Math.log(5) / Math.log(2);
-            } else if (c instanceof Mineshaft) {
-                high += Math.log(250) / Math.log(2);
+            } else if (c instanceof Mineshaft m) {
+                high += m.bits();
             } else if (c instanceof StartRoll r) {
                 high += r.bits();
             } else if (c instanceof PillarKeys pk) {
@@ -443,7 +465,7 @@ public final class SeedSolver {
                     if (!outpostRoll(seed, o.chunkX(), o.chunkZ()) && ++checks > checkMisses) continue outer;
                 }
                 for (Mineshaft m : ms) {
-                    if (!mineshaftRoll(seed, m.chunkX(), m.chunkZ()) && ++checks > checkMisses) continue outer;
+                    if (!mineshaftFits(seed, m) && ++checks > checkMisses) continue outer;
                 }
                 for (StartRoll r : sr) {
                     if (!startRoll(seed, r) && ++checks > checkMisses) continue outer;

@@ -119,8 +119,8 @@ public final class TemplateStarts {
     /** Like {@link #startsIn}, with which template matched and how it's turned. */
     public static Start startPiece(Level level, StructureScanner.Kind kind, int cx, int cz) {
         if (kind == StructureScanner.Kind.MINESHAFT) {
-            BlockPos room = MineshaftRooms.find(level, cx, cz);
-            return room == null ? null : new Start(room, null, null);
+            MineshaftRooms.Room room = MineshaftRooms.findRoom(level, cx, cz);
+            return room == null ? null : new Start(room.corner(), "room " + room.sizeX() + "x" + room.sizeZ(), null);
         }
         List<StructureTemplates.Template> templates;
         Function<Block, Block> canon;
