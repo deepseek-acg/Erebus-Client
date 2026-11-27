@@ -144,6 +144,7 @@ public final class AnchorAura extends AnchorSequence {
     @Override
     protected void onEnable() {
         super.onEnable();
+        CrystalAura.singleplayerHint(this, targetMobs.get());
         target = null;
         rearm = 0;
         lastSpot = null;
@@ -202,9 +203,15 @@ public final class AnchorAura extends AnchorSequence {
         }
         info = null;
         target = findTarget();
-        if (target == null) return;
+        if (target == null) {
+            info = CrystalAura.noTargetReason(targetMobs.get());
+            return;
+        }
         Spot spot = bestSpot(target);
-        if (spot == null) return;
+        if (spot == null) {
+            info = "no good spot";
+            return;
+        }
         if (beginAt(spot.pos(), null)) {
             cooldowns.put(spot.pos(), System.currentTimeMillis() + (long) (spotCooldown.get() * 1000));
         }
@@ -352,7 +359,7 @@ public final class AnchorAura extends AnchorSequence {
     public String suffix() {
         String stage = super.suffix();
         if (stage != null) return stage;
-        return target == null ? null : target.getName().getString();
+        return target != null ? target.getName().getString() : info; // why it's idle when there's no one
     }
 
 }

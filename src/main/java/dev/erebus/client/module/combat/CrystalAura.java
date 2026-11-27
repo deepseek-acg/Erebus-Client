@@ -332,8 +332,25 @@ public final class CrystalAura extends Module {
     // Lifecycle
     // =====================================================================================================
 
+    /**
+     * What to show when there's nobody to go for. In singleplayer there are never other players, so without Target
+     * mobs it can't do anything at all: say so rather than sit there quietly.
+     */
+    static String noTargetReason(boolean mobs) {
+        if (!mobs && mc.getSingleplayerServer() != null && mc.level != null && mc.level.players().size() <= 1) return "no players: turn on Target mobs";
+        return mobs ? "no player or hostile mob in range" : "no player in range";
+    }
+
+    /** A one-time hint when it's turned on where it can't find anyone (singleplayer, players only). */
+    static void singleplayerHint(dev.erebus.client.module.Module m, boolean mobs) {
+        if (mobs || mc.getSingleplayerServer() == null || mc.level == null || mc.level.players().size() > 1) return;
+        dev.erebus.client.util.Chat.info(m.name + " only goes for other players, and there are none in singleplayer. Turn on Target mobs in its "
+                + "settings to try it on hostile mobs (a zombie works well as a dummy).");
+    }
+
     @Override
     protected void onEnable() {
+        singleplayerHint(this, targetMobs.get());
         stage = Stage.IDLE;
         target = null;
         base = null;
@@ -464,7 +481,10 @@ public final class CrystalAura extends Module {
         }
         info = null;
         Spot spot = plan();
-        if (spot == null) return;
+        if (spot == null) {
+            info = idleReason;
+            return;
+        }
         if (!InputLock.tryClaim(this)) return;
         if (originalSlot < 0) originalSlot = InputSim.selectedSlot();
         if (!lookPending && !MouseSim.returning()) {
@@ -735,8 +755,12 @@ public final class CrystalAura extends Module {
     // Planning
     // =====================================================================================================
 
+    /** Why the last {@link #plan()} found nothing, for the module list. */
+    private String idleReason;
+
     private Spot plan() {
         List<LivingEntity> targets = targets();
+        idleReason = targets.isEmpty() ? noTargetReason(targetMobs.get()) : "no good spot";
         if (targets.isEmpty()) {
             if (stage == Stage.IDLE) target = null;
             return null;
@@ -1156,6 +1180,6 @@ public final class CrystalAura extends Module {
 
     @Override
     public String suffix() {
-        return target == null ? null : target.getName().getString();
+        return target != null ? target.getName().getString() : info; // why it's idle when there's no one
     }
 }
