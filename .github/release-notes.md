@@ -2,6 +2,12 @@ Erebus for Minecraft **1.21.11** (Fabric).
 
 **Install:** put the `erebus-<version>.jar` below in your `mods` folder together with [Fabric API](https://modrinth.com/mod/fabric-api) for 1.21.11. Requires Fabric Loader 0.20+ and Java 21. Open the dashboard with Right Shift.
 
+### New in 0.6.2
+- **Seed Cracker reads mineshafts**: from their start room, straight from the chunks the server sends (no need to go underground). They're everywhere, and the same rule placed them in chunks from 1.12 on. In testing, 1 outpost, the End pillars and 3 mineshafts were enough for the seed.
+- **Villages, igloos and outposts count for more**: the cracker also records how each one's first piece came out (its rotation, and which town centre a village has) and checks that against the seed. In testing, 2 villages, an igloo and an outpost went from thousands of possible seeds to exactly one. Abandoned villages count like any other: they're the same structure with a zombie centre.
+- **Cracking checks the real search size first**: some sets of structures pin the seed down less than usual; instead of grinding for minutes, it asks for one more temple, igloo or outpost.
+- **Crystal Aura and Anchor Aura name who they skipped**: instead of "no player in range", the module list says who's nearest and why they don't count (in creative, out of range, on Ignore names...).
+
 ### New in 0.6.1
 - **Crystal Aura and Anchor Aura say why they're idle**: the module list shows the reason (no players in range, no crystals, no glowstone in your hotbar, no good spot...). They only go for other players unless Target mobs is on, so in singleplayer, where there are none, they now tell you to turn it on instead of silently doing nothing.
 
