@@ -23,5 +23,6 @@ public final class Modules {
         modules.register(new dev.erebus.client.module.combat.AutoSafeAnchor());
         modules.register(new dev.erebus.client.module.combat.AnchorAura());
         modules.register(new dev.erebus.client.module.combat.CrystalAura());
+        modules.register(new dev.erebus.client.module.combat.AimAssist());
     }
 }

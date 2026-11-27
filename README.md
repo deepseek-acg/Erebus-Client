@@ -75,6 +75,7 @@ obsidian, XP bottles), Armor, and Notifications.
 | Logout Spots | Render | Marks where players were standing when they logged out, with name, health and how long ago. |
 | Auto Safe Anchor | Combat | One press: places a respawn anchor where you look, charges it, puts a shield block between you and the blast, detonates it, then turns off. Ported from Mist. |
 | Crystal Aura | Combat | Places and breaks end crystals on nearby opponents as fast as the server answers, sticking to one spot and placing obsidian only when it clearly pays off. Ported from Mist. |
+| Aim Assist | Combat | Pulls your view towards the opponent you're aiming near, on top of your own mouse movement: variable speed with a cap, Gaussian speed and aim-point randomness, friend/team/bot filters, prediction and projectile drop compensation. |
 | Anchor Aura | Combat | Runs the same sequence by itself at whichever nearby spot hurts an opponent most, never inside anyone's hitbox and never at a spot that could kill you. Ported from Mist. |
 
 Map, Stash ESP, Player Blocks, Old Chunks and Logout Spots are ported from Nyx and adapted to
@@ -86,7 +87,7 @@ navigator integration and editable block lists were not ported.
 
 ## Combat modules and simulated input
 
-Auto Safe Anchor, Anchor Aura and Crystal Aura never build interactions or packets themselves. Everything they do
+Auto Safe Anchor, Anchor Aura, Crystal Aura and Aim Assist never build interactions or packets themselves. Everything they do
 is simulated input that the game then handles exactly like a player's:
 
 - the hotbar slot is picked by pressing its number key (`input/InputSim`),
@@ -187,6 +188,42 @@ Less annoying to use:
 Mist's silent rotations, burst/idle pacing, server presets and session fatigue were not ported.
 Timing, camera movement, damage limits and targeting have the same kind of settings as the anchor
 modules.
+
+### Aim Assist
+
+Helps your aim rather than aiming for you. While an opponent is inside the FOV cone around your
+crosshair, the view is pulled towards them by adding mouse movement to your own each frame (the same
+synthetic mouse path as the other combat modules: through your sensitivity, in whole mouse counts).
+It never holds the camera, and it steps aside while another module is turning it.
+
+- **Speed.** `Base speed + Variable speed × degrees off target`, so it pulls harder when you're far
+  off and eases in as you close on them, never above **Speed cap**. It ramps in over **Ramp up**
+  after picking a target so it never snaps, drops to **On-target strength** once your crosshair is on
+  their hitbox, and has separate **Horizontal** and **Vertical** strength.
+- **Gaussian.** The speed wanders around its value as a smooth Gaussian process
+  (Ornstein–Uhlenbeck): **Speed spread** is its standard deviation, **Speed smoothness** how slowly
+  it drifts. The point it aims at drifts inside the hitbox the same way (**Point spread**, **Point
+  smoothness**), so it doesn't track one fixed pixel.
+- **Aim at.** The point of the hitbox nearest your crosshair (most natural), or head, chest, body or
+  legs. **Prediction** leads a moving target by a few ticks of their movement, to cover ping.
+- **Projectile aim.** With a bow being drawn, a charged crossbow or a trident being thrown, it aims
+  where the shot will land: the arrow's drag and gravity are simulated to find the pitch, and the
+  target's movement during the flight is led too. (In testing, a husk 22 blocks away was hit with a
+  plain draw and release.)
+- **Targets.** Players (and hostile mobs with **Target mobs**) within **Range**, picked by
+  crosshair angle, distance or health, kept with **Sticky target** and switched no faster than
+  **Switch delay**. Skips **Friends** (a name list), teammates (scoreboard team or the same name
+  color), players missing from the tab list (**Ignore bots**: NPCs and the fake players some
+  anticheats spawn to catch aim helpers), creative players, optionally invisible or naked ones, and
+  anyone behind blocks unless **Through walls** is on.
+- **Activation.** **Weapons only** (sword, axe, mace, trident, or a ready bow/crossbow), **Only while
+  attacking**, and **Only while aiming**: it only helps while you're moving the mouse yourself, above
+  **Mouse threshold**. **Flick to release** lets go of a target when you whip the mouse away from
+  them. It pauses while eating, in menus and in Freecam.
+- **Showing it.** **Show FOV** draws the cone around your crosshair. With Better visuals: brackets
+  around the target, the point it's aiming at, a guide line from your crosshair, and a label with
+  their name, health, distance (and flight time for projectiles), pink while tracking and green
+  once your crosshair is on them.
 
 ### Damage estimates
 
@@ -401,6 +438,7 @@ group). Both are on by default.
 | Crystal Aura | Brackets on the locked spot, the crystal with points circling it, the blast radius, the obsidian it's placing, and the opponent with the damage to them and to you. |
 | Stash ESP | A shape for each kind of find: brackets and a ring over the lid of chests and other storage, a spinning cage around spawners, sparks circling ender chests and enchanting tables, a pulsing ring on shulkers, halos over villagers, rising embers over furnaces. Beams and labels over each base or stash it marked. |
 | Player Blocks | The closest placed blocks glow softly instead of a flat fill. |
+| Aim Assist | Brackets around the target, the point it's aiming at, a guide line from your crosshair and a label with name, health and distance (and a projectile's flight time); pink while tracking, green on target. |
 | Old Chunks | Posts at the corners of nearby old chunks, with a slow sweep across them. |
 | Logout Spots | A ghost of the player where they logged out, with a halo. |
 | Freecam | While the camera is out: a halo over your body, brackets around it and a line back to it. |
