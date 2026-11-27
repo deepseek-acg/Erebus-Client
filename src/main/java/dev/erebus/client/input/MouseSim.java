@@ -112,26 +112,61 @@ public final class MouseSim {
 
     private static long returnAt;
 
-    // the player's own mouse movement, measured before anything synthetic is added
-    private static long userMoveAt;
-    private static double userMoveCounts;
+    // the player's own mouse movement, measured before anything synthetic is added: when, and how far it would turn
+    // the view (yaw, pitch degrees), for the last moments
+    private static final int SAMPLES = 512;
+    private static final long[] moveAt = new long[SAMPLES];
+    private static final double[] moveYaw = new double[SAMPLES];
+    private static final double[] movePitch = new double[SAMPLES];
+    private static int moveHead;
 
-    /** Called by the mouse handler with the player's own movement this frame. */
+    /** Called by the mouse handler with the player's own movement this frame (raw mouse counts). */
     public static void noteUserMovement(double dx, double dy) {
-        double c = Math.hypot(dx, dy);
-        if (c == 0) return;
-        long now = System.nanoTime();
-        if (now - userMoveAt > 250_000_000L) userMoveCounts = 0; // a new gesture
-        userMoveCounts += c;
-        userMoveAt = now;
+        if (dx == 0 && dy == 0) return;
+        Minecraft mc = Minecraft.getInstance();
+        double per = degreesPerCount();
+        moveHead = (moveHead + 1) % SAMPLES;
+        moveAt[moveHead] = System.nanoTime();
+        moveYaw[moveHead] = dx * per * (mc.options.invertMouseX().get() ? -1 : 1);
+        movePitch[moveHead] = dy * per * (mc.options.invertMouseY().get() ? -1 : 1);
+    }
+
+    /** The player's own net turn over the last {@code millis} milliseconds: {yaw, pitch} degrees. */
+    public static double[] userNet(long millis) {
+        long since = System.nanoTime() - millis * 1_000_000L;
+        double y = 0, p = 0;
+        for (int i = 0, k = moveHead; i < SAMPLES; i++, k = (k - 1 + SAMPLES) % SAMPLES) {
+            if (moveAt[k] == 0 || moveAt[k] < since) break;
+            y += moveYaw[k];
+            p += movePitch[k];
+        }
+        return new double[]{y, p};
     }
 
     /**
-     * True if the player has moved the mouse by more than {@code degrees} of camera turn within the last
-     * {@code millis} milliseconds (whether or not the camera was held at the time).
+     * True if the player has turned the view by more than {@code degrees} (net, so steady tracking back and forth
+     * doesn't add up) within the last {@code millis} milliseconds, whether or not the camera was held at the time.
      */
     public static boolean userMoved(double degrees, long millis) {
-        return System.nanoTime() - userMoveAt < millis * 1_000_000L && userMoveCounts * degreesPerCount() > degrees;
+        double[] n = userNet(millis);
+        return Math.hypot(n[0], n[1]) > degrees;
+    }
+
+    /**
+     * Like {@link #userMoved}, but movement towards where the current turn is going doesn't count: only a flick
+     * away from it (or sideways past it) does.
+     */
+    public static boolean userMovedAway(double degrees, long millis) {
+        double[] n = userNet(millis);
+        double len = Math.hypot(n[0], n[1]);
+        if (len <= degrees) return false;
+        LocalPlayer p = Minecraft.getInstance().player;
+        if (!active || p == null) return true;
+        float goalYaw = overshooting ? finalYaw : targetYaw, goalPitch = overshooting ? finalPitch : targetPitch;
+        double ty = Mth.wrapDegrees(goalYaw - p.getYRot()), tp = goalPitch - p.getXRot();
+        double tl = Math.hypot(ty, tp);
+        if (tl < 1e-3) return true; // already there: any big move is leaving it
+        return (n[0] * ty + n[1] * tp) / (len * tl) < 0.5; // not mostly towards it
     }
 
     public static boolean overshooting() {

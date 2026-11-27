@@ -214,7 +214,8 @@ public final class CrystalAura extends Module {
                 + "so it never fires while you build or eat.", true));
         pauseOnUse = add(new BoolSetting("Pause on use key", "Pause while you hold the use key yourself (placing, eating, blocking).", true));
         yieldToMouse = add(new BoolSetting("Yield to mouse", "If you flick the mouse, let go of the spot and give the camera back for a moment.", true));
-        yieldAmount = add(new NumberSetting("Yield above", "How far (degrees) you have to move the mouse within a moment for it to yield.", 25, 3, 90, 1)
+        yieldAmount = add(new NumberSetting("Yield above", "How far (degrees) you have to flick the mouse away from where it's aiming, within a "
+                + "moment, for it to yield. Following the opponent doesn't count, and right after a hit it takes half as much again.", 25, 3, 90, 1)
                 .visibleWhen(yieldToMouse::get));
         yieldPause = add(new NumberSetting("Yield pause", "Ticks to stay out of the way after yielding.", 6, 0, 40, 1).visibleWhen(yieldToMouse::get));
 
@@ -298,7 +299,8 @@ public final class CrystalAura extends Module {
         aimPoint = add(new ModeSetting("Aim point", "Where on the block or crystal to aim. Nearest: the smallest turn. Center: the middle. "
                 + "Random: anywhere that works.", "Nearest", "Nearest", "Center", "Random"));
         edgeMargin = add(new NumberSetting("Edge margin", "How far from a face's edges the aim point stays, as a fraction of the face.", 0.15, 0.05, 0.45, 0.01));
-        holdCamera = add(new BoolSetting("Hold camera", "Ignore your own mouse while it's turning. Off: your movement adds to the turn.", false));
+        holdCamera = add(new BoolSetting("Hold camera", "Ignore your own mouse while it's turning. Off: your movement adds to the turn (except "
+                + "right after a hit, when the turn always holds it so the click lands; flicking away still lets go).", false));
         lookBack = add(new BoolSetting("Look back", "Turn back to where you were looking once the fight pauses. Moving the mouse cancels it.", false));
         lookBackAfter = add(new NumberSetting("Look back after", "Ticks with no crystal before turning back.", 10, 0, 60, 1).visibleWhen(lookBack::get));
         lookBackSpeed = add(new NumberSetting("Look back speed", "Fastest the turn back goes, in degrees per second.", 600, 120, 2400, 30).visibleWhen(lookBack::get));
@@ -391,7 +393,7 @@ public final class CrystalAura extends Module {
             idle();
             return;
         }
-        if (yieldToMouse.get() && !MouseSim.returning() && MouseSim.userMoved(yieldAmount.get(), 150)) {
+        if (yieldToMouse.get() && !MouseSim.returning() && MouseSim.userMovedAway(yieldThreshold(), 150)) {
             yieldTicks = yieldPause.intValue();
             if (MouseSim.active()) MouseSim.stop();
             unlock(0);
@@ -409,6 +411,14 @@ public final class CrystalAura extends Module {
         }
         if (stage == Stage.OBSIDIAN) obsidianStage();
         else spam();
+    }
+
+    /**
+     * How far (net degrees within 150 ms) the player has to flick away for it to let go: half as much again for a
+     * moment after a hit, when the player is still following the opponent they knocked up and the crystals matter most.
+     */
+    private double yieldThreshold() {
+        return yieldAmount.get() * (knockup(lastHit) ? 1.5 : 1);
     }
 
     private void trackStillness() {
@@ -452,7 +462,8 @@ public final class CrystalAura extends Module {
             info = why;
             return;
         }
-        if (yieldToMouse.get() && MouseSim.userMoved(yieldAmount.get(), 150) && !MouseSim.returning()) return; // mid-flick: don't start now
+        // mid-flick: don't start now (but right after a hit, starting now is the point)
+        if (yieldToMouse.get() && !knockup(lastHit) && MouseSim.userMoved(yieldThreshold(), 150) && !MouseSim.returning()) return;
         if (--searchWait > 0) return;
         searchWait = searchInterval.intValue();
         if (!haveCrystals()) {
@@ -979,7 +990,10 @@ public final class CrystalAura extends Module {
                 aimKey = key;
             }
             if (aim == null) return onIt ? Action.AIMING : Action.REFUSED;
-            MouseSim.aim(aim.yaw(), aim.pitch(), profile(), holdCamera.get());
+            // right after a hit the turn holds the camera whatever the setting: the player is still following the opponent,
+            // and that movement added on top would keep the crosshair from ever settling on the spot (a flick away still
+            // lets go, it's measured before the hold)
+            MouseSim.aim(aim.yaw(), aim.pitch(), profile(), holdCamera.get() || knockup(lastHit));
             return Action.AIMING;
         }
         if (stillTicks < settleTicks.intValue()) { // just arrived: hold it here until the server has this view

@@ -179,7 +179,11 @@ Less annoying to use:
   after each click.
 - It pauses while you eat or block, while you hold the use key, and (by default) unless you hold a
   weapon, an end crystal or nothing, so it never fires while you build.
-- Flicking the mouse while it turns makes it drop the crystal and stay out of the way briefly.
+- Flicking the mouse away from where it's aiming (net, over 150 ms) makes it drop the crystal and stay
+  out of the way briefly. Following the opponent doesn't count: movement towards the spot is ignored,
+  and back-and-forth tracking cancels out. Right after you hit someone it takes half as much again,
+  and the turn to the spot holds the camera even with Hold camera off, so the click lands while
+  you're still following them.
 - It can run always, only for a moment after you hit someone with a weapon, or only while a key
   is held.
 - It breaks crystals already standing near the opponent when that's worth it (one click instead of
