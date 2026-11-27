@@ -47,6 +47,8 @@ public final class SeedCracker extends Module {
     private final BoolSetting treasure;
     private final BoolSetting autoCrack;
     private final BoolSetting announce;
+    private final BoolSetting tolerate;
+    private final dev.erebus.client.setting.TextSetting knownSeed;
 
     private SeedData data;
     private final ArrayDeque<ChunkPos> queue = new ArrayDeque<>();
@@ -66,12 +68,49 @@ public final class SeedCracker extends Module {
         group("Cracking");
         autoCrack = add(new BoolSetting("Crack automatically", "Start cracking as soon as there are enough structures.", true));
         announce = add(new BoolSetting("Chat messages", "Say in chat when a structure is recorded and when the seed is found.", true));
+        tolerate = add(new BoolSetting("Allow misreads", "If no seed fits every structure, look for one that fits all but up to 3 of them, "
+                + "checked against the server's hashed seed, and ignore the ones that don't fit. Needs a few more structures than "
+                + "an exact fit.", true));
+        knownSeed = add(new dev.erebus.client.setting.TextSetting("Known seed", "If you already know this server's seed, enter it here: "
+                + "it's used for predicted structures on the map instead of cracking. Leave empty to crack it.", "", 24));
         instance = this;
         ClientChunkEvents.CHUNK_LOAD.register((level, chunk) -> {
             SeedCracker m = instance;
             if (m != null && m.isEnabled() && level.dimension() == Level.OVERWORLD) m.queue.add(chunk.getPos());
         });
     }
+
+    /**
+     * The world seed for where you are, if known: the real one in singleplayer, the Known seed setting, or the one
+     * cracked for this server. Null otherwise.
+     */
+    public static Long knownSeed() {
+        try {
+            if (mc.getSingleplayerServer() != null) return mc.getSingleplayerServer().getWorldData().worldGenOptions().seed();
+        } catch (Throwable ignored) {
+        }
+        SeedCracker m = instance;
+        if (m != null) {
+            String t = m.knownSeed.get().trim();
+            if (!t.isEmpty()) {
+                try {
+                    return Long.parseLong(t);
+                } catch (NumberFormatException e) {
+                    return (long) t.hashCode(); // a text seed, the way the game turns it into a number
+                }
+            }
+        }
+        String key = SeedData.serverKey();
+        if (m != null && m.data != null && key.equals(m.data.key())) return m.data.worldSeed;
+        if (cachedKey == null || !cachedKey.equals(key)) {
+            cachedKey = key;
+            cachedSeed = SeedData.load(key).worldSeed;
+        }
+        return cachedSeed;
+    }
+
+    private static String cachedKey;
+    private static Long cachedSeed;
 
     @Override
     public List<Action> actions() {
@@ -115,7 +154,7 @@ public final class SeedCracker extends Module {
             if (chunk == null) continue;
             for (StructureScanner.Found f : StructureScanner.scan(chunk, kinds)) record(f);
         }
-        if (autoCrack.get() && !cracking && data.worldSeed == null && data.structures.size() != attemptedWith
+        if (autoCrack.get() && !cracking && data.worldSeed == null && knownSeed.get().isBlank() && data.structures.size() != attemptedWith
                 && SeedSolver.notEnough(data.clues(true)) == null) {
             crack(false);
         }
@@ -142,11 +181,17 @@ public final class SeedCracker extends Module {
     private void record(StructureScanner.Found f) {
         if (data.has(f.kind(), f.chunkX(), f.chunkZ())) return;
         var m = f.marker();
-        data.structures.add(new SeedData.Entry(f.kind().name(), f.chunkX(), f.chunkZ(), m.getX(), m.getY(), m.getZ()));
+        boolean misfit = data.worldSeed != null && !SeedSolver.fits(data.worldSeed, List.of(f.kind().clue(f.chunkX(), f.chunkZ())));
+        data.structures.add(new SeedData.Entry(f.kind().name(), f.chunkX(), f.chunkZ(), m.getX(), m.getY(), m.getZ(), misfit));
         data.save();
-        int spreads = (int) data.structures.stream().filter(e -> !e.kind().equals(StructureScanner.Kind.BURIED_TREASURE.name())).count();
+        if (misfit) {
+            if (announce.get()) chat(f.kind().label + " at " + m.getX() + ", " + m.getZ() + " doesn't fit the seed found, so it was probably "
+                    + "misread; ignored.");
+            return;
+        }
+        int spreads = (int) data.structures.stream().filter(e -> !e.rejected() && !e.kind().equals(StructureScanner.Kind.BURIED_TREASURE.name())).count();
         String detail = f.kind().label + " at " + m.getX() + ", " + m.getZ() + " (" + spreads + " temples/huts, "
-                + (data.structures.size() - spreads) + " treasures)";
+                + (data.counted() - spreads) + " treasures)";
         Notifications.push(name, detail, Notifications.Kind.INFO);
         if (announce.get()) chat("Recorded " + detail + ".");
     }
@@ -183,64 +228,80 @@ public final class SeedCracker extends Module {
         progress.set(0);
         SeedData d = data;
         List<SeedSolver.Clue> all = d.clues(true);
-        List<SeedSolver.Clue> noChance = d.clues(false);
         long hashed = d.hashedSeed;
         if (announce.get() || byHand) chat("Cracking with " + d.structures.size() + " structures...");
+        boolean allowMisreads = tolerate.get();
         Thread t = new Thread(() -> {
             String message;
             Long world = null, structure = null;
+            List<SeedSolver.Clue> misfits = List.of();
             try {
-                List<Long> seeds = SeedSolver.structureSeeds(all, 4096, progress);
-                boolean droppedTreasure = false;
-                if (seeds.isEmpty() && noChance.size() < all.size() && SeedSolver.notEnough(noChance) == null) {
-                    seeds = SeedSolver.structureSeeds(noChance, 4096, progress); // a "treasure" may have been a player's chest
-                    droppedTreasure = true;
-                }
-                if (seeds.isEmpty()) {
-                    message = "No seed fits all " + all.size() + " structures. One was probably misread, or this server changed its "
-                            + "structure settings.";
-                } else if (seeds.size() >= 4096) {
-                    message = "Too many possible seeds still; find a few more structures.";
-                } else if (hashed == 0) {
-                    if (seeds.size() == 1) structure = seeds.get(0);
-                    message = "The server doesn't send a hashed seed, so only the structure seed (low 48 bits) can be found: "
-                            + (seeds.size() == 1 ? seeds.get(0) : seeds.size() + " candidates left") + ".";
-                } else {
-                    List<Long> worlds = SeedSolver.worldSeeds(seeds, hashed, BiomeManager::obfuscateSeed);
-                    if (worlds.size() == 1) {
-                        world = worlds.get(0);
-                        structure = world & ((1L << 48) - 1);
-                        message = null;
-                    } else if (worlds.isEmpty()) {
-                        message = seeds.size() + " structure seeds fit, but none matches the server's hashed seed. Find a few more structures.";
-                    } else {
-                        message = worlds.size() + " seeds fit; find another structure to tell them apart.";
+                int spreads = (int) all.stream().filter(c -> c instanceof SeedSolver.Spread).count();
+                // misreads are only allowed with the hashed seed to confirm the result, and enough structures left over
+                int maxMisses = allowMisreads && hashed != 0 ? Math.min(3, Math.max(0, spreads - 4)) : 0;
+                message = "No seed fits all " + all.size() + " structures. One may have been misread (turn on Allow misreads and find a "
+                        + "few more), or this server changed its structure settings.";
+                for (int k = 0; k <= maxMisses; k++) {
+                    List<SeedSolver.Candidate> found = SeedSolver.structureSeeds(all, 50_000, progress, k);
+                    if (found.isEmpty()) continue;
+                    if (hashed == 0) {
+                        if (found.size() == 1) structure = found.get(0).seed();
+                        message = "The server doesn't send a hashed seed, so only the structure seed (low 48 bits) can be found: "
+                                + (found.size() == 1 ? found.get(0).seed() : found.size() + " candidates left, find more structures") + ".";
+                        break;
                     }
-                }
-                if (droppedTreasure && (world != null || structure != null)) {
-                    message = (message == null ? "" : message + " ") + "(Ignored the buried treasure: one of them wasn't real.)";
+                    if (found.size() >= 50_000) {
+                        message = "Too many possible seeds still; find a few more structures.";
+                        break;
+                    }
+                    SeedSolver.Candidate w = SeedSolver.firstWorldSeed(found, hashed, BiomeManager::obfuscateSeed);
+                    if (w != null) {
+                        world = w.seed();
+                        structure = world & ((1L << 48) - 1);
+                        misfits = SeedSolver.misfits(world, all);
+                        message = null;
+                        break;
+                    }
+                    message = found.size() + " structure seeds fit, but none matches the server's hashed seed. Find a few more structures.";
                 }
             } catch (Throwable e) {
                 message = "Cracking failed: " + e;
             }
             String msg = message;
             Long w = world, s = structure;
-            mc.execute(() -> finish(d, w, s, msg, byHand));
+            List<SeedSolver.Clue> bad = misfits;
+            mc.execute(() -> finish(d, w, s, bad, msg, byHand));
         }, "Erebus seed cracker");
         t.setDaemon(true);
         t.setPriority(Thread.MIN_PRIORITY);
         t.start();
     }
 
-    private void finish(SeedData d, Long world, Long structure, String message, boolean byHand) {
+    private void finish(SeedData d, Long world, Long structure, List<SeedSolver.Clue> misfits, String message, boolean byHand) {
         cracking = false;
         if (structure != null) d.structureSeed = structure;
-        if (world != null && verified(d, world)) {
-            d.worldSeed = world;
-            d.save();
-            Notifications.push(name, "Seed found: " + world, Notifications.Kind.SUCCESS);
-            seedMessage(world, d.structures.size());
-            return;
+        if (world != null) {
+            // set aside the structures that don't fit, then check the rest with the game's own placement code
+            List<String> ignored = new java.util.ArrayList<>();
+            for (int i = 0; i < d.structures.size(); i++) {
+                SeedData.Entry e = d.structures.get(i);
+                StructureScanner.Kind k = e.kindOrNull();
+                if (k == null || e.rejected()) continue;
+                if (!SeedSolver.fits(world, List.of(k.clue(e.chunkX(), e.chunkZ())))) {
+                    d.structures.set(i, e.withRejected(true));
+                    ignored.add(k.label + " at " + e.x() + ", " + e.z());
+                }
+            }
+            if (ignored.size() == misfits.size() && verified(d, world)) {
+                d.worldSeed = world;
+                d.save();
+                Notifications.push(name, "Seed found: " + world, Notifications.Kind.SUCCESS);
+                seedMessage(world, (int) d.counted());
+                if (!ignored.isEmpty()) chat("Ignored " + (ignored.size() == 1 ? "1 structure that doesn't" : ignored.size() + " structures that don't")
+                        + " fit the seed (probably misread): " + String.join("; ", ignored) + ".");
+                return;
+            }
+            for (int i = 0; i < d.structures.size(); i++) d.structures.set(i, d.structures.get(i).withRejected(false));
         }
         if (world != null) message = "Found " + world + " but it doesn't reproduce every structure; ignoring it.";
         d.save();
@@ -250,13 +311,8 @@ public final class SeedCracker extends Module {
     /** Checks the seed with the game's own structure placement code. */
     private static boolean verified(SeedData d, long seed) {
         for (SeedData.Entry e : d.structures) {
-            StructureScanner.Kind k;
-            try {
-                k = StructureScanner.Kind.valueOf(e.kind());
-            } catch (IllegalArgumentException ex) {
-                continue;
-            }
-            if (k == StructureScanner.Kind.BURIED_TREASURE) continue;
+            StructureScanner.Kind k = e.kindOrNull();
+            if (k == null || e.rejected() || k == StructureScanner.Kind.BURIED_TREASURE) continue;
             var placement = new RandomSpreadStructurePlacement(k.spacing, k.separation, RandomSpreadType.LINEAR, k.salt);
             ChunkPos p = placement.getPotentialStructureChunk(seed, e.chunkX(), e.chunkZ());
             if (p.x != e.chunkX() || p.z != e.chunkZ()) return false;
@@ -285,7 +341,7 @@ public final class SeedCracker extends Module {
 
     private void forget() {
         if (data == null) return;
-        data.structures = new ArrayList<>();
+        data.structures = new ArrayList<>(); // everything, including the ones set aside as misread
         data.structureSeed = null;
         data.worldSeed = null;
         attemptedWith = -1;

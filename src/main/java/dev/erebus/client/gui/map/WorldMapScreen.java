@@ -150,7 +150,7 @@ public final class WorldMapScreen extends UiScreen {
         Object[][] chips = {
                 {"Grid", 0xFFB0B0BA}, {"Explored", MapRenderer.EXPLORED}, {"Waypoints", 0xFFFFD24A}, {"Players", MapRenderer.PLAYER},
                 {"Spawners", MapRenderer.SPAWNER}, {"Storage", 0xFFFFA62B}, {"Stashes", MapRenderer.STASH}, {"Bases", MapRenderer.BASE},
-                {"Structures", 0xFF2DD4BF}};
+                {"Structures", 0xFF2DD4BF}, {"Predicted", 0xFF94A3B8}};
         int needed = 0;
         for (Object[] c : chips) needed += dev.erebus.client.render.font.Text.width((String) c[0]) + 25;
         int titleRoom = 24 + dev.erebus.client.render.font.Text.width("Map", true) + 90;
@@ -280,6 +280,7 @@ public final class WorldMapScreen extends UiScreen {
     private boolean layer(String name) {
         return switch (name) {
             case "Structures" -> layers.structures;
+            case "Predicted" -> layers.predicted;
             case "Bases" -> layers.bases;
             case "Stashes" -> layers.stashes;
             case "Storage" -> layers.storage;
@@ -294,6 +295,7 @@ public final class WorldMapScreen extends UiScreen {
     private void flip(String name) {
         switch (name) {
             case "Structures" -> layers.structures = !layers.structures;
+            case "Predicted" -> layers.predicted = !layers.predicted;
             case "Bases" -> layers.bases = !layers.bases;
             case "Stashes" -> layers.stashes = !layers.stashes;
             case "Storage" -> layers.storage = !layers.storage;

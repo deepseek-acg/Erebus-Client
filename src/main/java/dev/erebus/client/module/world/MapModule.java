@@ -68,6 +68,9 @@ public final class MapModule extends Module {
     private final BoolSetting waypointBeams;
     private final Map<Structure, BoolSetting> findStruct = new EnumMap<>(Structure.class);
     private final BoolSetting announce;
+    public final BoolSetting showPredicted;
+    private final Map<dev.erebus.client.seed.StructurePredictor.Kind, BoolSetting> predictKinds =
+            new EnumMap<>(dev.erebus.client.seed.StructurePredictor.Kind.class);
 
     private final java.util.Set<Long> structScanned = new java.util.HashSet<>();
     private final Map<Long, Long> scannedAt = new HashMap<>();
@@ -122,6 +125,19 @@ public final class MapModule extends Module {
                     + ".", st != Structure.Geode && st != Structure.Archaeology && st != Structure.EndGateway)));
         }
         announce = add(new BoolSetting("Announce in chat", "Say in chat when a new structure is found.", true));
+
+        group("Predicted structures");
+        showPredicted = add(new BoolSetting("Show predicted", "Show where structures generate, worked out from the world seed with the game's "
+                + "own world generation code (outlined markers). Needs the seed: known in singleplayer, or from Seed Cracker (found, or "
+                + "entered as Known seed). Only right for servers with vanilla world generation settings.", false));
+        for (var k : dev.erebus.client.seed.StructurePredictor.Kind.values()) {
+            boolean on = switch (k) {
+                case RUINED_PORTAL, SHIPWRECK, OCEAN_RUIN, TRAIL_RUINS, IGLOO -> false;
+                default -> true;
+            };
+            predictKinds.put(k, add(new BoolSetting(k.label + "s", "Show predicted " + k.label.toLowerCase(Locale.ROOT) + "s.", on)
+                    .visibleWhen(showPredicted::get)));
+        }
     }
 
     public static MapModule get() {
@@ -139,6 +155,8 @@ public final class MapModule extends Module {
         l.structures = showStructures.get();
         l.waypoints = showWaypoints.get();
         l.hideExplored = hideExplored.get();
+        l.predicted = showPredicted.get();
+        for (var e : predictKinds.entrySet()) if (e.getValue().get()) l.predictedKinds.add(e.getKey());
         return l;
     }
 

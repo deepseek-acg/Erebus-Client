@@ -15,7 +15,19 @@ import java.util.Locale;
 public final class SeedData {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    public record Entry(String kind, int chunkX, int chunkZ, int x, int y, int z) {
+    /** A recorded structure. {@code rejected}: it doesn't fit the seed (most likely misread), so it's left out. */
+    public record Entry(String kind, int chunkX, int chunkZ, int x, int y, int z, boolean rejected) {
+        public Entry withRejected(boolean r) {
+            return new Entry(kind, chunkX, chunkZ, x, y, z, r);
+        }
+
+        public StructureScanner.Kind kindOrNull() {
+            try {
+                return StructureScanner.Kind.valueOf(kind);
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
     }
 
     public List<Entry> structures = new ArrayList<>();
@@ -68,6 +80,11 @@ public final class SeedData {
         return key;
     }
 
+    /** The recorded structures that count (not rejected). */
+    public long counted() {
+        return structures.stream().filter(e -> !e.rejected()).count();
+    }
+
     public boolean has(StructureScanner.Kind kind, int chunkX, int chunkZ) {
         for (Entry e : structures) {
             if (e.kind().equals(kind.name()) && e.chunkX() == chunkX && e.chunkZ() == chunkZ) return true;
@@ -78,12 +95,8 @@ public final class SeedData {
     public List<SeedSolver.Clue> clues(boolean withChances) {
         List<SeedSolver.Clue> out = new ArrayList<>();
         for (Entry e : structures) {
-            StructureScanner.Kind k;
-            try {
-                k = StructureScanner.Kind.valueOf(e.kind());
-            } catch (IllegalArgumentException ex) {
-                continue;
-            }
+            StructureScanner.Kind k = e.kindOrNull();
+            if (k == null || e.rejected()) continue;
             if (k == StructureScanner.Kind.BURIED_TREASURE && !withChances) continue;
             out.add(k.clue(e.chunkX(), e.chunkZ()));
         }

@@ -165,11 +165,30 @@ public final class SeedSolver {
      * to 1_000_000 as the search runs.
      */
     public static List<Long> structureSeeds(List<Clue> clues, int max, AtomicLong progress) {
+        List<Long> out = new ArrayList<>();
+        for (Candidate c : structureSeeds(clues, max, progress, 0)) out.add(c.seed());
+        return out;
+    }
+
+    /** A structure seed and how many clues it doesn't explain. */
+    public record Candidate(long seed, int misses) {
+    }
+
+    /**
+     * Like {@link #structureSeeds(List, int, AtomicLong)}, but a seed may leave up to {@code maxMisses} clues
+     * unexplained: a few misread structures then don't hide the real seed. Results are sorted by how many clues they
+     * miss, fewest first.
+     */
+    public static List<Candidate> structureSeeds(List<Clue> clues, int max, AtomicLong progress, int maxMisses) {
         List<Spread> spreads = new ArrayList<>();
         List<Chance> chances = new ArrayList<>();
         for (Clue c : clues) {
             if (c instanceof Spread s) {
-                if (!s.valid()) return List.of(); // an offset outside the region's range: not a real start chunk
+                if (!s.valid()) { // an offset outside the region's range can't be a real start chunk
+                    if (maxMisses == 0) return List.of();
+                    maxMisses--;
+                    continue;
+                }
                 spreads.add(s);
             } else if (c instanceof Chance ch) {
                 chances.add(ch);
@@ -181,26 +200,22 @@ public final class SeedSolver {
         long lowMask = (1L << lowBits) - 1;
 
         // pass 1: the low bits
+        final int allowed = maxMisses;
         List<Long> lows = new ArrayList<>();
         for (long low = 0; low <= lowMask; low++) {
-            boolean ok = true;
+            int misses = 0;
             for (Spread s : spreads) {
                 int sb = lowBits(s.limit());
                 if (sb == 0) continue;
                 int m = (1 << sb) - 1;
                 long st = ((low + s.key()) ^ MUL) & lowMask;
                 st = (st * MUL + ADD) & lowMask;
-                if (((int) (st >>> 17) & m) != (s.offsetX() & m)) {
-                    ok = false;
-                    break;
-                }
+                boolean ok = ((int) (st >>> 17) & m) == (s.offsetX() & m);
                 st = (st * MUL + ADD) & lowMask;
-                if (((int) (st >>> 17) & m) != (s.offsetZ() & m)) {
-                    ok = false;
-                    break;
-                }
+                ok &= ((int) (st >>> 17) & m) == (s.offsetZ() & m);
+                if (!ok && ++misses > allowed) break;
             }
-            if (ok) lows.add(low);
+            if (misses <= allowed) lows.add(low);
         }
         if (lows.isEmpty()) return List.of();
 
@@ -211,7 +226,7 @@ public final class SeedSolver {
         long perSlice = (1L << highBits) / slices;
         long totalSlices = (long) slices * lows.size();
         AtomicLong done = new AtomicLong();
-        List<Long> found = Collections.synchronizedList(new ArrayList<>());
+        List<Candidate> found = Collections.synchronizedList(new ArrayList<>());
         Spread[] sp = spreads.toArray(new Spread[0]);
         Chance[] ch = chances.toArray(new Chance[0]);
         for (long low : lows) {
@@ -222,24 +237,35 @@ public final class SeedSolver {
                 outer:
                 for (long high = start; high < end; high++) {
                     long seed = (high << lowBits) | low;
+                    int misses = 0;
                     for (Spread s : sp) {
                         st[0] = ((seed + s.key()) ^ MUL) & MASK48;
-                        if (nextInt(st, s.limit()) != s.offsetX()) continue outer;
-                        if (nextInt(st, s.limit()) != s.offsetZ()) continue outer;
+                        if (nextInt(st, s.limit()) != s.offsetX() || nextInt(st, s.limit()) != s.offsetZ()) {
+                            if (++misses > allowed) continue outer;
+                        }
                     }
                     for (Chance c : ch) {
                         long state = step(((seed + c.key()) ^ MUL) & MASK48);
-                        if (!((int) (state >>> 24) * 5.9604645E-8F < c.frequency())) continue outer;
+                        if (!((int) (state >>> 24) * 5.9604645E-8F < c.frequency()) && ++misses > allowed) continue outer;
                     }
-                    found.add(seed);
+                    found.add(new Candidate(seed, misses));
                     if (found.size() >= max) return;
                 }
                 if (progress != null) progress.set(done.incrementAndGet() * 1_000_000L / totalSlices);
             });
             if (found.size() >= max) break;
         }
-        List<Long> out = new ArrayList<>(found);
-        Collections.sort(out);
+        List<Candidate> out = new ArrayList<>(found);
+        out.sort((p, q) -> p.misses() != q.misses() ? Integer.compare(p.misses(), q.misses()) : Long.compare(p.seed(), q.seed()));
+        return out;
+    }
+
+    /** The clues a seed doesn't explain (structures that were probably misread). */
+    public static List<Clue> misfits(long seed, List<Clue> clues) {
+        List<Clue> out = new ArrayList<>();
+        for (Clue c : clues) {
+            if (!fits(seed, List.of(c))) out.add(c);
+        }
         return out;
     }
 
@@ -262,5 +288,21 @@ public final class SeedSolver {
         List<Long> sorted = new ArrayList<>(out);
         Collections.sort(sorted);
         return sorted;
+    }
+
+    /**
+     * The first full world seed (checking candidates in order, fewest misses first) whose hash matches
+     * {@code hashedSeed}, or null.
+     */
+    public static Candidate firstWorldSeed(List<Candidate> candidates, long hashedSeed, LongUnaryOperator hash) {
+        for (Candidate c : candidates) {
+            long s48 = c.seed() & MASK48;
+            java.util.OptionalLong found = IntStream.range(0, 1 << 16).parallel()
+                    .mapToLong(upper -> ((long) upper << 48) | s48)
+                    .filter(seed -> hash.applyAsLong(seed) == hashedSeed)
+                    .findAny();
+            if (found.isPresent()) return new Candidate(found.getAsLong(), c.misses());
+        }
+        return null;
     }
 }
