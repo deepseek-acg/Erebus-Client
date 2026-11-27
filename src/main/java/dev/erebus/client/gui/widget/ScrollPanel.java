@@ -9,6 +9,11 @@ public class ScrollPanel extends Container {
     private final Anim scroll = new Anim(0f, 20f);
     private float target;
     public int paddingBottom = 6;
+    /**
+     * What this panel shows (a module's settings, a page...). When the screen is rebuilt, a new panel with the same
+     * key takes over the old one's scroll position, so changing a setting doesn't jump back to the top.
+     */
+    public String key;
     private boolean draggingBar;
     private double dragStartY;
     private float dragStartScroll;
@@ -21,8 +26,18 @@ public class ScrollPanel extends Container {
         return Math.max(0, contentBottom() + paddingBottom - (y + height));
     }
 
+    public ScrollPanel key(String key) {
+        this.key = key;
+        return this;
+    }
+
     public float scroll() {
         return scroll.get();
+    }
+
+    /** Where it's scrolling to (the same as {@link #scroll()} once it settles). */
+    public float targetScroll() {
+        return target;
     }
 
     public void setScroll(float value) {

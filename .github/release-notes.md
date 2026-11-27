@@ -2,6 +2,12 @@ Erebus for Minecraft **1.21.11** (Fabric).
 
 **Install:** put the `erebus-<version>.jar` below in your `mods` folder together with [Fabric API](https://modrinth.com/mod/fabric-api) for 1.21.11. Requires Fabric Loader 0.20+ and Java 21. Open the dashboard with Right Shift.
 
+### New in 0.6.0
+- **Settings keep your place**: changing a setting in the dashboard no longer scrolls the settings back to the top.
+- **Seed Cracker reads more**: igloos, villages (every biome, zombie villages too), pillager outposts and the End's pillars, on top of temples, swamp huts and buried treasure. The pillars still count when their tops are broken off (the bedrock each was capped with stays, and their width under the island is read otherwise). In testing, 2 outposts, 1 village and the End pillars were enough for the seed.
+- **One marker per structure**: a trial chamber (or another large structure) seen from different sides no longer gets two markers. With the seed known, the marker goes on the structure's start. Use Forget structures in the Map module to clear duplicates already on your map.
+- **Fullbright** (ported from Nyx), client-side only.
+
 ### New in 0.5.0
 - **Predicted structures on the map**: turn on Show predicted in the Map module (or the Predicted chip on the full map) and pick which kinds. They're worked out from the world seed with the game's own world generation code, and in testing they matched `/locate`. The seed comes from singleplayer, Seed Cracker, or Seed Cracker's new Known seed setting. Vanilla world generation settings only.
 - **Seed Cracker tolerates misreads**: if a few structures were misdetected, it still finds the seed (confirmed against the server's hashed seed) and says which structures it ignored.
@@ -16,7 +22,7 @@ Erebus for Minecraft **1.21.11** (Fabric).
 - **HUD** with a drag-and-drop editor: watermark, module list, coordinates, server info, nearby players, supplies, armor, notifications, minimap, finder legend.
 - **World map** (M) recorded as you play, with waypoints, structure detection and base/stash markers.
 - **Seed Cracker** (proof of concept) for servers with vanilla world generation.
-- **Freecam**, client-side only.
+- **Freecam** and **Fullbright**, client-side only.
 - **Basefinding:** Stash ESP, Player Blocks, Old Chunks, Logout Spots.
 - **Combat:** Auto Safe Anchor, Anchor Aura and Crystal Aura. All three work only through simulated mouse and key input (hotbar keys, mouse movement, use and attack keys), never crafted packets, and share the hands through one lock so they never click at the same time.
 

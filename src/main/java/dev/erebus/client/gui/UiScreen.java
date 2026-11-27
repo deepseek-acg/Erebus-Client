@@ -71,9 +71,28 @@ public abstract class UiScreen extends net.minecraft.client.gui.screens.Screen {
         Widget focused = ui.focused();
         if (focused != null) ui.focus(null);
         ui.release();
+        java.util.Map<String, Float> scrolls = new java.util.HashMap<>();
+        collectScrolls(root, scrolls);
         root.clear();
         root.bounds(0, 0, designWidth(), designHeight());
         build();
+        if (!scrolls.isEmpty()) restoreScrolls(root, scrolls);
+    }
+
+    /** Where each keyed scroll panel is scrolled to. */
+    private static void collectScrolls(dev.erebus.client.gui.widget.Container c, java.util.Map<String, Float> out) {
+        for (Widget w : c.children()) {
+            if (w instanceof dev.erebus.client.gui.widget.ScrollPanel p && p.key != null) out.put(p.key, p.targetScroll());
+            if (w instanceof dev.erebus.client.gui.widget.Container inner) collectScrolls(inner, out);
+        }
+    }
+
+    /** Puts rebuilt panels back where the ones with the same key were (after their content is laid out). */
+    private static void restoreScrolls(dev.erebus.client.gui.widget.Container c, java.util.Map<String, Float> saved) {
+        for (Widget w : c.children()) {
+            if (w instanceof dev.erebus.client.gui.widget.ScrollPanel p && p.key != null && saved.containsKey(p.key)) p.setScroll(saved.get(p.key));
+            if (w instanceof dev.erebus.client.gui.widget.Container inner) restoreScrolls(inner, saved);
+        }
     }
 
     private void updateOrigin() {

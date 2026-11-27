@@ -222,7 +222,7 @@ public final class WorldMapScreen extends UiScreen {
 
         int listTop = top + 30;
         int listBottom = top + h - (tab == 1 ? 30 : 6);
-        ScrollPanel list = root.add(new ScrollPanel(sx + 1, listTop, side() - 1, listBottom - listTop));
+        ScrollPanel list = root.add(new ScrollPanel(sx + 1, listTop, side() - 1, listBottom - listTop)).key("map-sidebar");
         int ry = listTop + 2;
         if (tab == 0) {
             if (finds.isEmpty()) {

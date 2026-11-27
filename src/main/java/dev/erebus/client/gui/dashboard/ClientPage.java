@@ -63,7 +63,7 @@ public final class ClientPage extends Page {
         }));
 
         int paneX = x + DashboardScreen.LIST + 1;
-        ScrollPanel pane = screen.listPanel(root, paneX, y + 1, w - DashboardScreen.LIST - 2, h - 2);
+        ScrollPanel pane = screen.listPanel(root, paneX, y + 1, w - DashboardScreen.LIST - 2, h - 2).key("client");
         int px = paneX + 12;
         int pw = pane.width - 24;
         int py = y + 12;
