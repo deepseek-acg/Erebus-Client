@@ -351,6 +351,25 @@ Nyx's silent rotations and movement-packet freezing were left out (they change w
 the player is no longer pinned in place against knockback, which would put the client out of step
 with the server.
 
+## Better visuals
+
+Purely cosmetic extras drawn on top of what each module already shows. They never change what a
+module does, what it sends or when. Turn them all off with **Better visuals** on the dashboard's
+Client page, or one module at a time with its own **Better visuals** setting (in its Visuals
+group). Both are on by default.
+
+| Module | What it adds |
+| --- | --- |
+| Auto Safe Anchor, Anchor Aura | The step the sequence is on, colour-coded at the anchor (placing, charging with its four charges lit up, shielding, detonating), the shield block still to come, the blast radius with a ripple as it goes off, an arc to where it's aiming, and the opponent it's for with the damage the spot should do. |
+| Crystal Aura | Brackets on the locked spot, the crystal with points circling it, the blast radius, the obsidian it's placing, and the opponent with the damage to them and to you. |
+| Stash ESP | A shape for each kind of find: brackets and a ring over the lid of chests and other storage, a spinning cage around spawners, sparks circling ender chests and enchanting tables, a pulsing ring on shulkers, halos over villagers, rising embers over furnaces. Beams and labels over each base or stash it marked. |
+| Player Blocks | The closest placed blocks glow softly instead of a flat fill. |
+| Old Chunks | Posts at the corners of nearby old chunks, with a slow sweep across them. |
+| Logout Spots | A ghost of the player where they logged out, with a halo. |
+| Freecam | While the camera is out: a halo over your body, brackets around it and a line back to it. |
+| Map | A beam and a label over each structure found nearby. |
+| Seed Cracker | The start chunk of each structure it recorded nearby, outlined with what it is, and a label on each End pillar with what it read. |
+
 ## Font
 
 Erebus Sans is the client's UI font: a renamed derivative of [Geist](https://vercel.com/font) by

@@ -88,6 +88,7 @@ public final class PlayerBlocks extends Module {
         group("Render");
         fill = add(new BoolSetting("Fill", "Also shade the inside of each box a little (off = outline only).", false));
         maxShown = add(new NumberSetting("Max shown", "Only outline this many blocks (the closest ones), to keep the game smooth.", 400, 50, 1500, 50));
+        addVisuals("The closest placed blocks glow softly instead of a flat fill.");
     }
 
     /** Player-placed and natural-structure counts in view, for the legend HUD element. */
@@ -204,6 +205,10 @@ public final class PlayerBlocks extends Module {
         for (int i = 0; i < limit; i++) {
             Hit h = all.get(i);
             int c = h.type == Type.NaturalStructures ? h.type.color : PLACED_COLOR;
+            if (visuals() && i < 48) { // a soft breathing glow instead of a flat fill
+                dev.erebus.client.render.Visuals.glowBox(new AABB(h.pos), c, 1.5f, 0x55);
+                continue;
+            }
             GizmoStyle style = shade ? GizmoStyle.strokeAndFill(c, 1.5f, (45 << 24) | (c & 0xFFFFFF)) : GizmoStyle.stroke(c, 1.5f);
             Gizmos.cuboid(new AABB(h.pos), style).setAlwaysOnTop();
         }

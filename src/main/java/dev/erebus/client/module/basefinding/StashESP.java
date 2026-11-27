@@ -140,6 +140,7 @@ public final class StashESP extends Module {
         clusterMin = add(new NumberSetting("Cluster size", "How many stash blocks one clump needs for an alert.", 10, 3, 60, 1)
                 .visibleWhen(() -> notify.get() && clusterAlerts.get()));
         logFinds = add(new BoolSetting("Log to file", "Write every alert to .minecraft/erebus/finds.txt with time, dimension, coordinates and counts.", true));
+        addVisuals("A shape for each kind of find (rings over chests, halos over villagers, a spinning cage around spawners, orbits around ender chests...), and a beam with a label over each base and stash it alerted about.");
     }
 
     public static StashESP get() {
@@ -444,6 +445,69 @@ public final class StashESP extends Module {
                         : GizmoStyle.stroke(lineColor, width)).setAlwaysOnTop();
             }
             if (tracers.get()) Gizmos.line(start, b.box.getCenter(), lineColor, width).setAlwaysOnTop();
+        }
+        if (visuals()) {
+            for (int i = 0; i < Math.min(limit, 64); i++) decorate(draw.get(i));
+            for (dev.erebus.client.map.MapStore.Mark m : dev.erebus.client.map.MapStore.alerts()) {
+                if (!m.kind().equals("base") && !m.kind().equals("stash")) continue;
+                Vec3 at = new Vec3(m.x() + 0.5, m.y(), m.z() + 0.5);
+                if (at.distanceToSqr(camPos) < 512 * 512) dev.erebus.client.render.Visuals.beam(at, 48, m.color(), 2.5f);
+            }
+        }
+    }
+
+    /** The cosmetic shape for one kind of find (Better visuals). */
+    private void decorate(Box b) {
+        AABB box = b.box;
+        Vec3 c = box.getCenter();
+        int col = b.type.color;
+        double t = dev.erebus.client.render.Visuals.time();
+        switch (b.type) {
+            case Spawners -> { // a spinning cage
+                for (int i = 0; i < 4; i++) {
+                    double a = t * 1.6 + i * Math.PI / 2;
+                    Vec3 p = c.add(Math.cos(a) * 0.95, -0.5, Math.sin(a) * 0.95);
+                    Gizmos.line(p, p.add(0, 1, 0), col, 2f).setAlwaysOnTop();
+                }
+                dev.erebus.client.render.Visuals.ring(c.add(0, 0.5, 0), 0.95, col, 1.5f, 24);
+                dev.erebus.client.render.Visuals.ring(c.add(0, -0.5, 0), 0.95, col, 1.5f, 24);
+            }
+            case EnderChests, EnchantingTables -> { // orbiting sparks
+                for (int i = 0; i < 3; i++) {
+                    double a = t * 2 + i * Math.PI * 2 / 3;
+                    Gizmos.point(c.add(Math.cos(a) * 0.85, Math.sin(t * 3 + i) * 0.3, Math.sin(a) * 0.85), col, 7f).setAlwaysOnTop();
+                }
+            }
+            case ShulkerBoxes -> {
+                dev.erebus.client.render.Visuals.brackets(box.inflate(0.08), col, 2f);
+                dev.erebus.client.render.Visuals.ring(new Vec3(c.x, box.maxY + 0.15, c.z), 0.45 + 0.12 * dev.erebus.client.render.Visuals.pulse(1.4), col, 2f, 24);
+            }
+            case Villagers, ArmorStands, ChestedAnimals -> // a halo
+                    dev.erebus.client.render.Visuals.ring(new Vec3(c.x, box.maxY + 0.25, c.z), 0.32, col, 2f, 20);
+            case StorageMinecarts -> dev.erebus.client.render.Visuals.ring(new Vec3(c.x, box.minY + 0.02, c.z), 0.85, col, 2f, 24);
+            case Furnaces, BrewingStands -> { // rising embers or bubbles
+                for (int i = 0; i < 3; i++) {
+                    float p = dev.erebus.client.render.Visuals.phase(1.3, i / 3.0);
+                    Gizmos.point(new Vec3(c.x + (i - 1) * 0.22, box.maxY + p * 0.9, c.z), dev.erebus.client.render.Visuals.fade(col, 1 - p), 6f).setAlwaysOnTop();
+                }
+            }
+            case ItemFrames -> dev.erebus.client.render.Visuals.brackets(box.inflate(0.04), col, 1.4f);
+            default -> { // storage blocks: brackets and a soft ring over the lid
+                dev.erebus.client.render.Visuals.brackets(box.inflate(0.05), col, 1.6f);
+                dev.erebus.client.render.Visuals.ring(new Vec3(c.x, box.maxY + 0.04, c.z), 0.42, dev.erebus.client.render.Visuals.fade(col, 0.4f + 0.6f * dev.erebus.client.render.Visuals.pulse(2.0)), 1.5f, 20);
+            }
+        }
+    }
+
+    @Override
+    public void onRenderOverlay(dev.erebus.client.gui.Ui ui) {
+        if (!visuals() || mc.player == null || mc.options.hideGui) return;
+        for (dev.erebus.client.map.MapStore.Mark m : dev.erebus.client.map.MapStore.alerts()) {
+            if (!m.kind().equals("base") && !m.kind().equals("stash")) continue;
+            Vec3 at = new Vec3(m.x() + 0.5, m.y() + 3, m.z() + 0.5);
+            double d = mc.player.position().distanceTo(at);
+            if (d > 256) continue;
+            dev.erebus.client.render.Visuals.label(ui, at, dev.erebus.client.render.font.Icon.RADAR, m.label(), Math.round(d) + "m", m.color());
         }
     }
 }

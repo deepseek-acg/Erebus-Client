@@ -97,6 +97,7 @@ public final class SeedCracker extends Module {
             SeedCracker m = instance;
             if (m != null && m.isEnabled() && level.dimension() == Level.OVERWORLD) m.queue.add(chunk.getPos());
         });
+        addVisuals("Outlines the start chunk of each structure it recorded nearby, with what it is, and labels each End pillar with what it read.");
     }
 
     /**
@@ -247,6 +248,78 @@ public final class SeedCracker extends Module {
             templateQueue.clear();
             templateWaiting.clear();
             templateQueued.clear();
+        }
+    }
+
+    // =====================================================================================================
+    // Better visuals
+    // =====================================================================================================
+
+    private static int kindColor(StructureScanner.Kind k) {
+        return switch (k) {
+            case DESERT_PYRAMID -> 0xFFFDE68A;
+            case JUNGLE_TEMPLE -> 0xFF84CC16;
+            case SWAMP_HUT -> 0xFF4ADE80;
+            case IGLOO -> 0xFFBAE6FD;
+            case VILLAGE -> 0xFFA3E635;
+            case OUTPOST -> 0xFFCBD5E1;
+            case MINESHAFT -> 0xFFD6A35C;
+            case BURIED_TREASURE -> 0xFFFACC15;
+        };
+    }
+
+    /** End pillar i's centre, as the game places them (42 blocks out, ten around the island). */
+    private static int[] pillarAt(int i) {
+        double angle = 2.0 * (-Math.PI + 0.3141592653589793 * i);
+        return new int[]{net.minecraft.util.Mth.floor(42.0 * Math.cos(angle)), net.minecraft.util.Mth.floor(42.0 * Math.sin(angle))};
+    }
+
+    @Override
+    public void onRenderWorld(dev.erebus.client.module.WorldRender ctx) {
+        if (!visuals() || data == null || mc.player == null || mc.level.dimension() != Level.OVERWORLD) return;
+        net.minecraft.world.phys.Vec3 me = mc.player.position();
+        for (SeedData.Entry e : data.structures) {
+            StructureScanner.Kind k = e.kindOrNull();
+            if (k == null) continue;
+            double x0 = e.chunkX() << 4, z0 = e.chunkZ() << 4, y = e.y() + 0.05;
+            if (me.distanceToSqr(x0 + 8, me.y, z0 + 8) > 256 * 256) continue;
+            int c = e.rejected() ? 0xFFF87171 : kindColor(k);
+            // the start chunk's outline at the structure's height, with posts at its corners
+            net.minecraft.world.phys.Vec3[] corners = {new net.minecraft.world.phys.Vec3(x0, y, z0), new net.minecraft.world.phys.Vec3(x0 + 16, y, z0),
+                    new net.minecraft.world.phys.Vec3(x0 + 16, y, z0 + 16), new net.minecraft.world.phys.Vec3(x0, y, z0 + 16)};
+            for (int i = 0; i < 4; i++) {
+                net.minecraft.gizmos.Gizmos.line(corners[i], corners[(i + 1) % 4], c, 2f);
+                net.minecraft.gizmos.Gizmos.line(corners[i], corners[i].add(0, 3, 0), dev.erebus.client.render.Visuals.fade(c, 0.6f), 2f);
+            }
+            dev.erebus.client.render.Visuals.ripple(new net.minecraft.world.phys.Vec3(x0 + 8, y, z0 + 8), 7, c, 1.5f, 3.0, (e.chunkX() + e.chunkZ()) * 0.17);
+        }
+    }
+
+    @Override
+    public void onRenderOverlay(dev.erebus.client.gui.Ui ui) {
+        if (!visuals() || data == null || mc.player == null || mc.options.hideGui) return;
+        net.minecraft.world.phys.Vec3 me = mc.player.position();
+        if (mc.level.dimension() == Level.END && data.pillars != null && data.pillars.length == 10) {
+            for (int i = 0; i < 10; i++) { // what was read off each pillar
+                int v = data.pillars[i];
+                if (v < 0) continue;
+                int[] p = pillarAt(i);
+                double top = v < 10 ? 76 + 3 * v + 2.5 : 70;
+                String what = v < 10 ? "slot " + v : "slots " + 3 * (v - 10) + "-" + Math.min(9, 3 * (v - 10) + 2);
+                dev.erebus.client.render.Visuals.label(ui, new net.minecraft.world.phys.Vec3(p[0] + 0.5, top, p[1] + 0.5), dev.erebus.client.render.font.Icon.INFO,
+                        "Pillar " + (i + 1), what + (v < 10 ? " (bedrock)" : " (width)"), 0xFFC4B5FD);
+            }
+            return;
+        }
+        if (mc.level.dimension() != Level.OVERWORLD) return;
+        for (SeedData.Entry e : data.structures) {
+            StructureScanner.Kind k = e.kindOrNull();
+            if (k == null) continue;
+            net.minecraft.world.phys.Vec3 at = new net.minecraft.world.phys.Vec3((e.chunkX() << 4) + 8, e.y() + 4, (e.chunkZ() << 4) + 8);
+            if (me.distanceTo(at) > 128) continue;
+            String detail = e.rejected() ? "doesn't fit the seed" : e.piece() != null && !e.piece().contains("-")
+                    ? e.piece().replaceAll(".*/", "").replace(".nbt", "").replace('_', ' ') : "start chunk";
+            dev.erebus.client.render.Visuals.label(ui, at, dev.erebus.client.render.font.Icon.GLOBE, k.label, detail, e.rejected() ? 0xFFF87171 : kindColor(k));
         }
     }
 

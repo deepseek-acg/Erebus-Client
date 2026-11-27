@@ -16,8 +16,12 @@ public final class ClientSettings {
     public final BoolSetting clickSounds = new BoolSetting("Click sounds", "Play a soft click when pressing buttons.", true);
     public final BoolSetting rememberPage = new BoolSetting("Remember last page",
             "Reopen the dashboard on the page you last used.", true);
+    public final BoolSetting betterVisuals = new BoolSetting("Better visuals",
+            "Extra, purely cosmetic visuals across the modules: what the combat modules are doing step by step, their blast radius "
+            + "and target, a shape for each kind of find in Stash ESP, beams over structures and more. Each module also has its own "
+            + "Better visuals switch; both have to be on.", true);
 
     public List<Setting<?>> all() {
-        return List.of(uiScale, menuKeyCloses, clickSounds, rememberPage);
+        return List.of(uiScale, menuKeyCloses, clickSounds, rememberPage, betterVisuals);
     }
 }

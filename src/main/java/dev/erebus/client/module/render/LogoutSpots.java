@@ -48,6 +48,7 @@ public final class LogoutSpots extends Module {
 
     public LogoutSpots() {
         super("Logout Spots", "Marks where players were standing when they logged out.", Category.RENDER);
+        addVisuals("A ghost of the player where they logged out, with a halo.");
     }
 
     @Override
@@ -124,6 +125,17 @@ public final class LogoutSpots extends Module {
         for (Spot sp : spots) {
             if (sp.dim != dim) continue;
             Gizmos.cuboid(sp.box, GizmoStyle.strokeAndFill(COLOR, 2f, 0x40FF9A2E)).setAlwaysOnTop();
+            if (visuals()) { // a ghost: head and body, fading in and out, with a halo
+                AABB b = sp.box;
+                Vec3 c = b.getCenter();
+                float f = 0.35f + 0.45f * dev.erebus.client.render.Visuals.pulse(2.4);
+                double hw = 0.25, bodyTop = b.maxY - 0.5;
+                Gizmos.cuboid(new AABB(c.x - hw, bodyTop, c.z - hw, c.x + hw, b.maxY, c.z + hw),
+                        GizmoStyle.strokeAndFill(dev.erebus.client.render.Visuals.fade(0xFFFFE8CC, f), 1.5f, dev.erebus.client.render.Visuals.alpha(0xFFFFE8CC, Math.round(0x60 * f)))).setAlwaysOnTop();
+                Gizmos.cuboid(new AABB(c.x - 0.25, b.minY + 0.75, c.z - 0.13, c.x + 0.25, bodyTop, c.z + 0.13),
+                        GizmoStyle.strokeAndFill(dev.erebus.client.render.Visuals.fade(0xFFFFE8CC, f), 1.5f, dev.erebus.client.render.Visuals.alpha(0xFFFFE8CC, Math.round(0x40 * f)))).setAlwaysOnTop();
+                dev.erebus.client.render.Visuals.ring(new Vec3(c.x, b.maxY + 0.2, c.z), 0.3, COLOR, 2f, 20);
+            }
             if (tracers.get()) Gizmos.line(start, sp.box.getCenter(), COLOR, 1.5f).setAlwaysOnTop();
         }
     }

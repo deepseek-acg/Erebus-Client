@@ -2,6 +2,9 @@ Erebus for Minecraft **1.21.11** (Fabric).
 
 **Install:** put the `erebus-<version>.jar` below in your `mods` folder together with [Fabric API](https://modrinth.com/mod/fabric-api) for 1.21.11. Requires Fabric Loader 0.20+ and Java 21. Open the dashboard with Right Shift.
 
+### New in 0.6.5
+- **Better visuals**: purely cosmetic extras for every module where they make sense. The combat modules show what they're doing (the anchor sequence's step, charges, shield and blast radius; Crystal Aura's spot, crystal, blast and the damage it should do), Stash ESP gets a shape for each kind of find and beams over bases, Freecam marks your body, Logout Spots draws a ghost, Seed Cracker outlines the start chunks it read, and more. On by default: turn them off on the Client page, or per module with each module's Better visuals setting.
+
 ### New in 0.6.4
 - **Mineshaft rooms are checked against the seed**: the game rolls each mineshaft's start room size from the seed, so Seed Cracker now measures it (8 to 13 blocks each way) and checks it. A room that isn't really a mineshaft's start almost never has the right size, so it's set aside instead of spoiling the crack, and a real one counts for more. Chat shows the size ("Mineshaft (room 9x12)"). Several rooms in what looks like one big network are separate mineshafts whose corridors ran together, so each one counts.
 

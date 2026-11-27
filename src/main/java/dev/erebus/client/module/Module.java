@@ -41,6 +41,23 @@ public abstract class Module {
         this.defaultEnabled = defaultEnabled;
     }
 
+    private dev.erebus.client.setting.BoolSetting visualsSetting;
+
+    /**
+     * Adds this module's "Better visuals" switch (in a Visuals section): purely cosmetic extras on top of what the
+     * module normally draws. Call at the end of the constructor.
+     */
+    protected void addVisuals(String what) {
+        group("Visuals");
+        visualsSetting = add(new dev.erebus.client.setting.BoolSetting("Better visuals", what
+                + " Purely cosmetic. Also needs Better visuals on in the dashboard's Client page.", true));
+    }
+
+    /** Whether the cosmetic extras should be drawn: this module's switch and the client-wide one are both on. */
+    public boolean visuals() {
+        return visualsSetting != null && visualsSetting.get() && dev.erebus.client.Erebus.client().betterVisuals.get();
+    }
+
     /** Settings added after this call are listed under a section with this title. */
     protected void group(String title) {
         currentGroup = title;

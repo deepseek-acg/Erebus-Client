@@ -15,6 +15,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -45,6 +46,7 @@ public final class OldChunks extends Module {
 
     public OldChunks() {
         super("Old Chunks", "Shows chunks generated in old versions of the game. Old chunks mark old trails and old bases.", Category.BASEFINDING);
+        addVisuals("Old chunks near you get posts at their corners and a slow shimmer.");
     }
 
     @Override
@@ -137,6 +139,15 @@ public final class OldChunks extends Module {
             AABB box = new AABB(x, y, z, x + 16, y + 0.05, z + 16);
             int fillA = outline.get() ? 0 : a == Age.OLD ? 0x45 : 0x20;
             Gizmos.cuboid(box, fillA > 0 ? GizmoStyle.strokeAndFill(color, 1f, (fillA << 24) | (color & 0xFFFFFF)) : GizmoStyle.stroke(color, 1f));
+            if (a == Age.OLD && visuals() && Math.abs((x >> 4) - mc.player.chunkPosition().x) <= 6 && Math.abs((z >> 4) - mc.player.chunkPosition().z) <= 6) {
+                // posts at the corners and a shimmer sweeping across
+                for (int k = 0; k < 4; k++) {
+                    double px = x + ((k & 1) == 0 ? 0 : 16), pz = z + ((k & 2) == 0 ? 0 : 16);
+                    Gizmos.line(new Vec3(px, y, pz), new Vec3(px, y + 2.5, pz), color, 2f);
+                }
+                double sweep = x + 16 * dev.erebus.client.render.Visuals.phase(3.0, ((x >> 4) + (z >> 4)) * 0.13);
+                Gizmos.line(new Vec3(sweep, y + 0.06, z), new Vec3(sweep, y + 0.06, z + 16), dev.erebus.client.render.Visuals.fade(color, 0.7f), 2f);
+            }
         }
     }
 }

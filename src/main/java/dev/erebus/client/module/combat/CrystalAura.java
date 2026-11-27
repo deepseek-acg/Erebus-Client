@@ -153,6 +153,7 @@ public final class CrystalAura extends Module {
     // ---- the locked spot ----
     private Stage stage = Stage.IDLE;
     private LivingEntity target;
+    private float visualDealt, visualTaken;
     private BlockPos base;
     private int ticks;
     private int stageTicks;
@@ -312,6 +313,8 @@ public final class CrystalAura extends Module {
         showTarget = add(new BoolSetting("Show target", "Outline the spot it's working on.", true));
         baseColor = add(new ColorSetting("Crystal color", 0xFFB46BFF).visibleWhen(showTarget::get));
         obsidianColor = add(new ColorSetting("Obsidian color", 0xFF6B8CFF).visibleWhen(showTarget::get));
+        addVisuals("Shows the crystal spot it's locked on (with the crystal's reach and blast radius), the obsidian it's placing, the "
+                + "opponent it's for and the damage the spot should do.");
 
         if (!hooked) {
             hooked = true;
@@ -505,6 +508,8 @@ public final class CrystalAura extends Module {
     // =====================================================================================================
 
     private void lockOn(Spot spot) {
+        visualDealt = spot.dealt();
+        visualTaken = spot.taken();
         target = pendingTarget;
         base = spot.base();
         lastBase = base;
@@ -1135,9 +1140,58 @@ public final class CrystalAura extends Module {
 
     @Override
     public void onRenderWorld(WorldRender ctx) {
-        if (!showTarget.get() || stage == Stage.IDLE || base == null) return;
+        if (stage == Stage.IDLE || base == null) return;
+        if (visuals()) drawVisuals(ctx);
+        if (!showTarget.get()) return;
         int c = stage == Stage.OBSIDIAN ? obsidianColor.get() : baseColor.get();
         Gizmos.cuboid(new AABB(base), GizmoStyle.strokeAndFill(c, 2f, (0x30 << 24) | (c & 0xFFFFFF))).setAlwaysOnTop();
+    }
+
+    /** Where the crystal sits on the locked spot (its hitbox is 2 wide and 2 high, standing on the block). */
+    private net.minecraft.world.phys.Vec3 crystalCenter() {
+        return new net.minecraft.world.phys.Vec3(base.getX() + 0.5, base.getY() + 2, base.getZ() + 0.5);
+    }
+
+    /** The cosmetic extras: the spot, the crystal on it, its blast radius, the obsidian it's placing and the opponent. */
+    private void drawVisuals(WorldRender ctx) {
+        if (stage == Stage.OBSIDIAN) {
+            dev.erebus.client.render.Visuals.glowBox(new AABB(base), 0xFF818CF8, 1.6f, 0x70);
+            dev.erebus.client.render.Visuals.brackets(new AABB(base).inflate(0.06), 0xFFA5B4FC, 2.2f);
+            dev.erebus.client.render.Visuals.arc(ctx.tracerStart(), net.minecraft.world.phys.Vec3.atCenterOf(base), 0.3, 0xCCA5B4FC, 1.5f);
+            return;
+        }
+        int c = 0xFFC084FC;
+        net.minecraft.world.phys.Vec3 cc = crystalCenter();
+        dev.erebus.client.render.Visuals.brackets(new AABB(base).inflate(0.06), c, 2.2f);
+        dev.erebus.client.render.Visuals.brackets(new AABB(cc.x - 1, cc.y - 1, cc.z - 1, cc.x + 1, cc.y + 1, cc.z + 1), 0xAAE9D5FF, 1.6f);
+        // a slow spin around the crystal, and its blast (power 6)
+        double a = dev.erebus.client.render.Visuals.time() * 2.4;
+        for (int i = 0; i < 3; i++) {
+            double ang = a + i * Math.PI * 2 / 3;
+            Gizmos.point(cc.add(Math.cos(ang) * 0.9, Math.sin(a * 1.7 + i) * 0.35, Math.sin(ang) * 0.9), c, 7f).setAlwaysOnTop();
+        }
+        dev.erebus.client.render.Visuals.ring(cc.add(0, -0.95, 0), 0.9, dev.erebus.client.render.Visuals.fade(c, 0.8f), 1.5f, 24);
+        dev.erebus.client.render.Visuals.sphere(cc, 6, dev.erebus.client.render.Visuals.alpha(0xFFFF5A3C, 0x50), 1.1f);
+        dev.erebus.client.render.Visuals.ripple(cc.add(0, -0.95, 0), 6, 0xFFFF5A3C, 1.6f, 1.2, 0);
+        if (target != null && target.isAlive()) {
+            net.minecraft.world.phys.Vec3 lerp = target.getPosition(ctx.partialTick()).subtract(target.position());
+            AABB tb = target.getBoundingBox().move(lerp.x, lerp.y, lerp.z);
+            dev.erebus.client.render.Visuals.brackets(tb.inflate(0.12), 0xFFFF4D6D, 2.2f);
+            dev.erebus.client.render.Visuals.arc(cc, tb.getCenter(), 0.8, 0xFFFF4D6D, 1.5f);
+        }
+    }
+
+    @Override
+    public void onRenderOverlay(dev.erebus.client.gui.Ui ui) {
+        if (!visuals() || stage == Stage.IDLE || base == null || mc.options.hideGui) return;
+        if (stage == Stage.OBSIDIAN) {
+            dev.erebus.client.render.Visuals.label(ui, net.minecraft.world.phys.Vec3.atCenterOf(base).add(0, 0.9, 0),
+                    dev.erebus.client.render.font.Icon.PLUS, "Obsidian", "for a better spot", 0xFFA5B4FC);
+            return;
+        }
+        String dmg = String.format(java.util.Locale.ROOT, "%.1f to them \u00b7 %.1f to you", visualDealt, visualTaken);
+        dev.erebus.client.render.Visuals.label(ui, crystalCenter().add(0, 1.1, 0), dev.erebus.client.render.font.Icon.TARGET,
+                target != null ? target.getName().getString() : "Crystal", dmg, 0xFFC084FC);
     }
 
     @Override
