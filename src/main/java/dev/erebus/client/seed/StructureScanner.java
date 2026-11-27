@@ -54,7 +54,21 @@ public final class StructureScanner {
             this.salt = salt;
         }
 
-        /** What this structure says about the seed. */
+        /**
+         * What this structure says about the seed, including how its first piece came out when that's known: the
+         * rotation of an igloo, village or outpost, and which centre a village has.
+         */
+        public List<SeedSolver.Clue> clues(int chunkX, int chunkZ, String piece, Integer rotation) {
+            List<SeedSolver.Clue> out = new java.util.ArrayList<>(clues(chunkX, chunkZ));
+            if (rotation != null && rotation >= 0 && rotation < 4 && (this == IGLOO || this == VILLAGE || this == OUTPOST)) {
+                int[] pool = this == VILLAGE && piece != null ? TemplateStarts.villageCentreSlots(piece) : null;
+                out.add(pool == null ? new SeedSolver.StartRoll(chunkX, chunkZ, rotation, 0, new int[0])
+                        : new SeedSolver.StartRoll(chunkX, chunkZ, rotation, pool[0], java.util.Arrays.copyOfRange(pool, 1, pool.length)));
+            }
+            return out;
+        }
+
+        /** What this structure's position says about the seed. */
         public List<SeedSolver.Clue> clues(int chunkX, int chunkZ) {
             if (this == BURIED_TREASURE) return List.of(new SeedSolver.Chance(chunkX, chunkZ, 0.01F));
             if (this == MINESHAFT) return List.of(new SeedSolver.Mineshaft(chunkX, chunkZ));
@@ -65,7 +79,14 @@ public final class StructureScanner {
         }
     }
 
-    public record Found(Kind kind, int chunkX, int chunkZ, BlockPos marker) {
+    /**
+     * A structure found. {@code piece} (the template of its first piece, for villages) and {@code rotation} (0-3,
+     * clockwise) are null when not known.
+     */
+    public record Found(Kind kind, int chunkX, int chunkZ, BlockPos marker, String piece, Integer rotation) {
+        public Found(Kind kind, int chunkX, int chunkZ, BlockPos marker) {
+            this(kind, chunkX, chunkZ, marker, null, null);
+        }
     }
 
     // (marker x, z, partner x, z) for each orientation, in chunk coordinates

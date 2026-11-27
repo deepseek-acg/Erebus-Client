@@ -211,6 +211,13 @@ cracks the seed by itself once it has enough. Nothing is sent to the server.
   and a match there gives the start chunk exactly. Natural ground (grass, dirt, sand, snow) and the
   bell, which players take, don't count towards the match. An outpost also passed an extra 1-in-5 roll,
   which is checked too.
+- **How the first piece came out.** The game rolls each structure's first piece from the seed and its
+  chunk: the rotation of an igloo, village or outpost, and which town centre a village gets. Both are
+  recorded and checked, about 4 more bits per village and 2 per igloo or outpost. Abandoned (zombie)
+  villages aren't a separate structure: they're ordinary villages whose centre came out as a zombie
+  variant (about 1 in 51 in plains), placed by the same rule, so they count like any other. Their
+  centres differ from the normal ones by only a few path blocks, so a centre counts as "this design,
+  normal or abandoned".
 - **Mineshafts.** Every chunk rolls a 1-in-250 chance for one, from the seed and the chunk's
   coordinates, and the game starts each with a room whose corner is exactly 2 blocks into the start
   chunk: a flat band of cave air 3 high over 8 to 13 blocks each way. A room counts when that band is

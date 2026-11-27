@@ -43,7 +43,7 @@ public final class SeedSolver {
     }
 
     /** One structure seen in the world, reduced to what its placement says about the seed. */
-    public sealed interface Clue permits Spread, Chance, OutpostRoll, PillarKeys, Mineshaft {
+    public sealed interface Clue permits Spread, Chance, OutpostRoll, PillarKeys, Mineshaft, StartRoll {
     }
 
     /**
@@ -102,6 +102,24 @@ public final class SeedSolver {
      * chunks too.
      */
     public record Mineshaft(int chunkX, int chunkZ) implements Clue {
+    }
+
+    /**
+     * How a structure's first piece came out. The game generates it with a generator set up by
+     * {@code setLargeFeatureSeed(seed, chunkX, chunkZ)}: first {@code nextInt(4)} for its rotation, then (for
+     * jigsaw structures) {@code nextInt(poolSize)} into its start pool, where each piece takes as many slots as
+     * its weight. {@code ranges} are the slots ({lo, hi} pairs, hi exclusive) of the pieces it could be.
+     */
+    public record StartRoll(int chunkX, int chunkZ, int rotation, int poolSize, int[] ranges) implements Clue {
+        double bits() {
+            double b = 2;
+            if (poolSize > 1 && ranges.length > 0) {
+                int slots = 0;
+                for (int i = 0; i + 1 < ranges.length; i += 2) slots += ranges[i + 1] - ranges[i];
+                b += Math.log((double) poolSize / Math.max(1, slots)) / Math.log(2);
+            }
+            return b;
+        }
     }
 
     /**
@@ -180,8 +198,8 @@ public final class SeedSolver {
         return nextInt(st, 5) == 0;
     }
 
-    /** Whether a mineshaft starts in this chunk: {@code setLargeFeatureSeed} then {@code nextDouble() < 0.004}. */
-    public static boolean mineshaftRoll(long seed, int chunkX, int chunkZ) {
+    /** The LCG state {@code setLargeFeatureSeed(seed, chunkX, chunkZ)} leaves. */
+    private static long largeFeatureState(long seed, int chunkX, int chunkZ) {
         long st = scramble(seed);
         st = step(st);
         int a1 = (int) (st >>> 16);
@@ -193,7 +211,22 @@ public final class SeedSolver {
         st = step(st);
         int b2 = (int) (st >>> 16);
         long b = ((long) b1 << 32) + b2;
-        st = scramble((long) chunkX * a ^ (long) chunkZ * b ^ seed);
+        return scramble((long) chunkX * a ^ (long) chunkZ * b ^ seed);
+    }
+
+    /** Whether a structure's first piece came out with this rotation (and, for jigsaw pieces, one of these pieces). */
+    public static boolean startRoll(long seed, StartRoll r) {
+        long[] st = {largeFeatureState(seed, r.chunkX(), r.chunkZ())};
+        if (nextInt(st, 4) != r.rotation()) return false;
+        if (r.poolSize() <= 1 || r.ranges().length == 0) return true;
+        long v = nextInt(st, r.poolSize());
+        for (int i = 0; i + 1 < r.ranges().length; i += 2) if (v >= r.ranges()[i] && v < r.ranges()[i + 1]) return true;
+        return false;
+    }
+
+    /** Whether a mineshaft starts in this chunk: {@code setLargeFeatureSeed} then {@code nextDouble() < 0.004}. */
+    public static boolean mineshaftRoll(long seed, int chunkX, int chunkZ) {
+        long st = largeFeatureState(seed, chunkX, chunkZ);
         st = step(st);
         long hi = st >>> 22; // next(26)
         st = step(st);
@@ -221,6 +254,8 @@ public final class SeedSolver {
                 if (!pk.allows(pillarKey(seed))) return false;
             } else if (c instanceof Mineshaft m) {
                 if (!mineshaftRoll(seed, m.chunkX(), m.chunkZ())) return false;
+            } else if (c instanceof StartRoll r) {
+                if (!startRoll(seed, r)) return false;
             }
         }
         return true;
@@ -249,6 +284,8 @@ public final class SeedSolver {
                 high += Math.log(5) / Math.log(2);
             } else if (c instanceof Mineshaft) {
                 high += Math.log(250) / Math.log(2);
+            } else if (c instanceof StartRoll r) {
+                high += r.bits();
             } else if (c instanceof PillarKeys pk) {
                 pillar += pk.bits();
             }
@@ -322,8 +359,13 @@ public final class SeedSolver {
         List<Chance> chances = new ArrayList<>();
         List<OutpostRoll> rolls = new ArrayList<>();
         List<Mineshaft> shafts = new ArrayList<>();
+        List<StartRoll> starts = new ArrayList<>();
         PillarKeys pillars = null;
         for (Clue c : clues) {
+            if (c instanceof StartRoll r) {
+                starts.add(r);
+                continue;
+            }
             if (c instanceof Mineshaft m) {
                 shafts.add(m);
                 continue;
@@ -363,6 +405,7 @@ public final class SeedSolver {
         Chance[] ch = chances.toArray(new Chance[0]);
         OutpostRoll[] ro = rolls.toArray(new OutpostRoll[0]);
         Mineshaft[] ms = shafts.toArray(new Mineshaft[0]);
+        StartRoll[] sr = starts.toArray(new StartRoll[0]);
         // each work item: one low part and a slice of its high parts
         int slices = highBits >= 24 ? 1 << 12 : 1;
         long perSlice = (1L << highBits) / slices;
@@ -392,6 +435,9 @@ public final class SeedSolver {
                 }
                 for (Mineshaft m : ms) {
                     if (!mineshaftRoll(seed, m.chunkX(), m.chunkZ()) && ++misses > allowed) continue outer;
+                }
+                for (StartRoll r : sr) {
+                    if (!startRoll(seed, r) && ++misses > allowed) continue outer;
                 }
                 found.add(new Candidate(seed, misses));
                 if (found.size() >= max) return;

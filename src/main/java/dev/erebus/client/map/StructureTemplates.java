@@ -251,6 +251,17 @@ public final class StructureTemplates {
         return fits(level, t, tr, ox, oy, oz, canon, minFraction, minMatched, null, 0);
     }
 
+    /** The fraction of the template's blocks that are in place with its origin at (ox, oy, oz) under {@code tr}. */
+    public static double matchFraction(Level level, Template t, int tr, int ox, int oy, int oz, Function<Block, Block> canon) {
+        int hits = 0;
+        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
+        for (int i = 0; i < t.size(); i++) {
+            p.set(ox + tx(t.x()[i], t.z()[i], tr), oy + t.y()[i], oz + tz(t.x()[i], t.z()[i], tr));
+            if (canon.apply(level.getBlockState(p).getBlock()) == t.block()[i]) hits++;
+        }
+        return t.size() == 0 ? 0 : hits / (double) t.size();
+    }
+
     /** Where the template's block at (x, z) goes, relative to its origin, under transform {@code tr}: {x, z}. */
     public static int[] transform(int x, int z, int tr) {
         return new int[]{tx(x, z, tr), tz(x, z, tr)};

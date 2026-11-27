@@ -240,8 +240,8 @@ public final class SeedCracker extends Module {
             budget--;
             templateTried.put(key, now);
             if (templateTried.size() > 20_000) templateTried.clear();
-            var at = dev.erebus.client.seed.TemplateStarts.startsIn(mc.level, k, cx, cz);
-            if (at != null) record(new StructureScanner.Found(k, cx, cz, at));
+            var at = dev.erebus.client.seed.TemplateStarts.startPiece(mc.level, k, cx, cz);
+            if (at != null) record(new StructureScanner.Found(k, cx, cz, at.pos(), at.template(), at.rotation()));
         }
         if (templateQueue.size() > 50_000 || templateWaiting.size() > 5_000) {
             templateQueue.clear();
@@ -357,8 +357,9 @@ public final class SeedCracker extends Module {
     private void record(StructureScanner.Found f) {
         if (data.has(f.kind(), f.chunkX(), f.chunkZ())) return;
         var m = f.marker();
-        boolean misfit = data.worldSeed != null && !SeedSolver.fits(data.worldSeed, f.kind().clues(f.chunkX(), f.chunkZ()));
-        data.structures.add(new SeedData.Entry(f.kind().name(), f.chunkX(), f.chunkZ(), m.getX(), m.getY(), m.getZ(), misfit));
+        SeedData.Entry entry = new SeedData.Entry(f.kind().name(), f.chunkX(), f.chunkZ(), m.getX(), m.getY(), m.getZ(), false, f.piece(), f.rotation());
+        boolean misfit = data.worldSeed != null && !SeedSolver.fits(data.worldSeed, entry.clues());
+        data.structures.add(entry.withRejected(misfit));
         data.save();
         if (misfit) {
             if (announce.get()) chat(f.kind().label + " at " + m.getX() + ", " + m.getZ() + " doesn't fit the seed found, so it was probably "
@@ -366,7 +367,9 @@ public final class SeedCracker extends Module {
             return;
         }
         int spreads = (int) data.structures.stream().filter(e -> !e.rejected() && !e.kind().equals(StructureScanner.Kind.BURIED_TREASURE.name())).count();
-        String detail = f.kind().label + " at " + m.getX() + ", " + m.getZ() + " (" + spreads + " structures, "
+        String piece = f.piece() == null || f.kind() != StructureScanner.Kind.VILLAGE ? ""
+                : " (" + f.piece().replaceAll(".*/", "").replace(".nbt", "").replace('_', ' ') + ")";
+        String detail = f.kind().label + piece + " at " + m.getX() + ", " + m.getZ() + " (" + spreads + " structures, "
                 + (data.counted() - spreads) + " treasures)";
         Notifications.push(name, detail, Notifications.Kind.INFO);
         if (announce.get()) chat("Recorded " + detail + ".");
@@ -490,7 +493,7 @@ public final class SeedCracker extends Module {
                 SeedData.Entry e = d.structures.get(i);
                 StructureScanner.Kind k = e.kindOrNull();
                 if (k == null || e.rejected()) continue;
-                int bad = (int) k.clues(e.chunkX(), e.chunkZ()).stream().filter(c -> !SeedSolver.fits(world, List.of(c))).count();
+                int bad = (int) e.clues().stream().filter(c -> !SeedSolver.fits(world, List.of(c))).count();
                 if (bad > 0) {
                     d.structures.set(i, e.withRejected(true));
                     ignored.add(k.label + " at " + e.x() + ", " + e.z());

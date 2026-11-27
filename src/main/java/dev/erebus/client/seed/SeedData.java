@@ -15,10 +15,18 @@ import java.util.Locale;
 public final class SeedData {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    /** A recorded structure. {@code rejected}: it doesn't fit the seed (most likely misread), so it's left out. */
-    public record Entry(String kind, int chunkX, int chunkZ, int x, int y, int z, boolean rejected) {
+    /**
+     * A recorded structure. {@code rejected}: it doesn't fit the seed (most likely misread), so it's left out.
+     * {@code piece} and {@code rotation}: how its first piece came out, if known (null in older files).
+     */
+    public record Entry(String kind, int chunkX, int chunkZ, int x, int y, int z, boolean rejected, String piece, Integer rotation) {
         public Entry withRejected(boolean r) {
-            return new Entry(kind, chunkX, chunkZ, x, y, z, r);
+            return new Entry(kind, chunkX, chunkZ, x, y, z, r, piece, rotation);
+        }
+
+        public List<SeedSolver.Clue> clues() {
+            StructureScanner.Kind k = kindOrNull();
+            return k == null ? List.of() : k.clues(chunkX, chunkZ, piece, rotation);
         }
 
         public StructureScanner.Kind kindOrNull() {
@@ -105,7 +113,7 @@ public final class SeedData {
             StructureScanner.Kind k = e.kindOrNull();
             if (k == null || e.rejected()) continue;
             if (k == StructureScanner.Kind.BURIED_TREASURE && !withChances) continue;
-            out.addAll(k.clues(e.chunkX(), e.chunkZ()));
+            out.addAll(e.clues());
         }
         if (pillarKeys != null && pillarKeys.length > 0 && pillarKeys.length < 65536) out.add(new SeedSolver.PillarKeys(pillarKeys));
         return out;
