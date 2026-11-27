@@ -2,13 +2,14 @@ Erebus for Minecraft **1.21.11** (Fabric).
 
 **Install:** put the `erebus-<version>.jar` below in your `mods` folder together with [Fabric API](https://modrinth.com/mod/fabric-api) for 1.21.11. Requires Fabric Loader 0.20+ and Java 21. Open the dashboard with Right Shift.
 
+### New in 0.5.0
+- **Predicted structures on the map**: turn on Show predicted in the Map module (or the Predicted chip on the full map) and pick which kinds. They're worked out from the world seed with the game's own world generation code, and in testing they matched `/locate`. The seed comes from singleplayer, Seed Cracker, or Seed Cracker's new Known seed setting. Vanilla world generation settings only.
+- **Seed Cracker tolerates misreads**: if a few structures were misdetected, it still finds the seed (confirmed against the server's hashed seed) and says which structures it ignored.
+- **New minimap**: classic frame, compass letters, mob dots, player names, waypoints pinned to the edge, coordinates / biome / facing / other-dimension lines, and zoom from 0.125x to 8x with zoom in/out keys.
+
 ### New in 0.4.0
-- **Freecam** (ported from Nyx): fly the camera around while your player stays put. It's client-side only: your position, rotation and packets don't change. It can block clicks while the camera is out, hide your hand, keep nearby entities visible, and keep to loaded chunks in spectate mode.
+- **Freecam** (ported from Nyx), client-side only.
 - **Structure detection that doesn't flag builds**: the map only marks a structure once its real layout is confirmed.
-  - Desert pyramids, jungle temples and swamp huts (new): marker blocks at the exact spot the game's code puts them.
-  - Strongholds: the full 12-frame portal ring. Ocean monuments: their exact height, footprint and the ocean above. Nether fortresses: a blaze spawner or a stretch of bridge.
-  - End cities, bastions and ruined portals: matched against the game's own structure templates.
-- The Map module has **Rescan structures** and **Forget structures**, to clear markers left by older versions.
 
 ### What's in it
 - **Dashboard** with module categories, search, keybinds and settings, an editable theme (presets, every color, radius, blur, animations) and its own UI font, Erebus Sans.
