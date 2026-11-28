@@ -339,7 +339,7 @@ public final class PlayerBlocks extends Module {
         Blocks.BLAST_FURNACE, Blocks.SMOKER, Blocks.BARREL, Blocks.CAULDRON, Blocks.BREWING_STAND);
 
     /** How many chunks around a single give-away block count as that structure (0 = not a give-away block). */
-    private static int markerRadius(BlockState s, ResourceKey<Level> dim) {
+    static int markerRadius(BlockState s, ResourceKey<Level> dim) {
         Block b = s.getBlock();
         if (b == Blocks.BELL) return 5;                                                   // village
         if (b == Blocks.END_PORTAL_FRAME) return 6;                                       // stronghold

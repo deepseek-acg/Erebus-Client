@@ -21,7 +21,8 @@
     "MouseHandlerAccess",
     "ContainerScreenAccess",
     "XRayBlockStateMixin",
-    "XRayFluidMixin"
+    "XRayFluidMixin",
+    "BlockUpdateMixin"
   ],
   "injectors": {
     "defaultRequire": 1

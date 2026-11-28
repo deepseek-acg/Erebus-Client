@@ -69,6 +69,7 @@ obsidian, XP bottles), Armor, and Notifications.
 | Seed Cracker | World | Works out the world seed from desert pyramids, jungle temples, swamp huts, igloos, villages, pillager outposts, mineshafts, buried treasure and the End's pillars, including on Spigot and Paper servers that set their own structure salts (and works those salts out). |
 | Stash ESP | Basefinding | Outlines and tracers to storage and other base giveaways (chests, shulkers, ender chests, furnaces, villagers, item frames, chest minecarts...). Alerts when an area looks like a base or a stash, marks it on the map and logs it to `erebus/finds.txt`. |
 | Player Blocks | Basefinding | Highlights blocks the world never generates (concrete, shulkers, beacons, mineral blocks, redstone parts...) and building materials where they don't belong, skipping natural structures and biomes where they occur naturally. Lets Stash ESP tell bases from stashes. |
+| Light Finder | Basefinding | Finds light nature doesn't explain: player-made lights and lit space underground or indoors, ignoring lava, glow lichen, Nether glowstone, mineshaft torches and the lights of villages and other structures. Flags lit furnaces, beacons, portals and lights above the Nether roof, and alerts when a light is placed nearby. |
 | Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
 | Freecam | Render | Flies the camera away from your player while your player stays put. Client-side only. Ported from Nyx. |
 | Fullbright | Render | Lights everything up, like a permanent Night Vision only you see. Client-side only. Ported from Nyx. |
@@ -448,10 +449,50 @@ group). Both are on by default.
 | Aim Assist | Brackets around the target, the point it's aiming at, a guide line from your crosshair and a label with name, health and distance (and a projectile's flight time); pink while tracking, green on target. |
 | Old Chunks | Posts at the corners of nearby old chunks, with a slow sweep across them. |
 | Logout Spots | A ghost of the player where they logged out, with a halo. |
+| Light Finder | Lights glow with a soft halo, marked areas get a beam and a label with what was found, and new lights pulse. |
 | Player ESP | A ring under each player that shows their health, and a gold burst when someone pops a totem. |
 | Freecam | While the camera is out: a halo over your body, brackets around it and a line back to it. |
 | Map | A beam and a label over each structure found nearby. |
 | Seed Cracker | The start chunk of each structure it recorded nearby, outlined with what it is, and a label on each End pillar with what it read. |
+
+## Light Finder
+
+Light is one of the clearest signs of a player: almost nothing underground gives off light on its own, and
+nobody digs a tunnel or a bunker without lighting it.
+
+- **Lights.** Every light-giving block in the chunks you have loaded is sorted into natural or
+  player-made. Natural: lava, fire, magma, glow lichen, glow berries, sea pickles, amethyst, sculk and
+  the like; glowstone, shroomlight and lanterns in the Nether; End rods in the End; the wall torches
+  mineshafts hang on their support beams. Lights natural structures also have (torches, lanterns,
+  campfires, candles, sea lanterns, copper bulbs, End rods) are excused near villages, strongholds,
+  trial chambers, ancient cities, bastions, End cities, monuments, outposts and mansions, recognised by
+  their give-away blocks, illagers or the Map module's structure marks. Glowstone, froglights, jack
+  o'lanterns and redstone lamps never generate in one, so they always count.
+- **Light levels.** The client already has the block light of every loaded chunk. Air that's
+  underground or under a roof and lit at least to **Min light** is counted unless something natural (or
+  excused) explains it: light drops by one per block, so a source of brightness e only explains a spot
+  lit to L within e − L blocks. A chunk is only judged once its neighbours have been read too, since
+  light crosses chunk borders. A large unexplained lit volume is a base or a tunnel network even when
+  the lights themselves are few or hidden.
+- **What stands out.** Lit furnaces, smokers and blast furnaces (they go out on their own, so someone
+  was smelting), beacons, conduits, lit nether portals, charged respawn anchors and enchanting tables
+  count for more, and any light above the Nether roof is flagged on its own.
+- **Live.** When the server tells you a light was placed (or a furnace lit) more than a few blocks from
+  you, you get an alert, and the light pulses with a label for a minute: someone is working there right
+  now, often out of sight underground.
+- **Marked and alerted.** Chunks with enough lights (**Min lights per chunk**, beacons and furnaces
+  counting for several) or enough unexplained lit space (**Min lit blocks per chunk**) are marked: the
+  lights get outlines in their kind's color and the lit space is shaded. Neighbouring marked chunks form
+  an area; a big enough one ("Lit area", "Active base" with a lit furnace, "Nether roof base") is
+  alerted, written to `erebus/finds.txt` and marked on the map like Stash ESP's finds.
+- **Filters.** Each kind of light can be turned off, and **Ignore near spawn** and **Ignore highways**
+  skip the places on old anarchy servers where everything is player-made or travellers light the way.
+
+In testing: a sealed room underground at y 9 with six torches and a lit furnace was found as an
+"Active base" (7 lights, 171 lit blocks) from 16 blocks away through the rock, while the lava caves and
+the mineshaft around it, the spawn area with a trial chamber under it and a desert village at night
+weren't flagged; a glowstone block placed 18 blocks away raised a live alert, a torch placed in the
+village didn't.
 
 ## Player ESP
 

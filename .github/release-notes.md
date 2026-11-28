@@ -2,6 +2,9 @@ Erebus for Minecraft **1.21.11** (Fabric).
 
 **Install:** put the `erebus-<version>.jar` below in your `mods` folder together with [Fabric API](https://modrinth.com/mod/fabric-api) for 1.21.11. Requires Fabric Loader 0.20+ and Java 21. Open the dashboard with Right Shift.
 
+### New in 0.7.1
+- **Light Finder** (Basefinding): finds light nature doesn't explain. Player-made lights (torches, lanterns, glowstone, froglights, lamps, campfires, lit furnaces, beacons, portals...) are told apart from natural ones (lava, glow lichen, glow berries, amethyst, sculk, Nether glowstone, End rods in the End, mineshaft torches) and from the lights of villages and other structures, and the client's own light data shows lit space underground or indoors that no natural source explains. Lit furnaces, beacons, portals and lights above the Nether roof stand out, areas are alerted and marked on the map, and a light placed near you raises a live alert: someone is there right now.
+
 ### New in 0.7.0
 - **Player ESP** (ported from Nyx): boxes or corners, tracers and sharp name tags through walls with health, distance, ping, held item, armor and totem pops; colors by distance, health or team; friends list; skip tab-list bots.
 - **Auto Totem** (ported from Nyx's Smarter AutoTotem): random, ping-adjusted reaction times, done entirely with real key presses and cursor moves (hotbar swap, or open the inventory, hover a totem, swap, close). Smart mode reacts to crystals, anchors, beds, falls and maces nearby, not just low health; keeps an optional spare in a hotbar slot; pop alerts.

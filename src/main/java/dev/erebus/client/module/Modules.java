@@ -17,6 +17,7 @@ public final class Modules {
         modules.register(new StashESP());
         modules.register(new PlayerBlocks());
         modules.register(new OldChunks());
+        modules.register(new dev.erebus.client.module.basefinding.LightFinder());
         modules.register(new LogoutSpots());
         modules.register(new dev.erebus.client.module.render.Freecam());
         modules.register(new dev.erebus.client.module.render.Fullbright());
