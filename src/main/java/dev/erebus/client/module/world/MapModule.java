@@ -138,6 +138,8 @@ public final class MapModule extends Module {
             predictKinds.put(k, add(new BoolSetting(k.label + "s", "Show predicted " + k.label.toLowerCase(Locale.ROOT) + "s.", on)
                     .visibleWhen(showPredicted::get)));
         }
+        addVisuals("A beam and a label over each structure it found nearby.");
+        addTagSize();
     }
 
     public static MapModule get() {
@@ -258,6 +260,14 @@ public final class MapModule extends Module {
 
     @Override
     public void onRenderOverlay(dev.erebus.client.gui.Ui ui) {
+        if (visuals() && mc.player != null && MapStore.ready() && !mc.options.hideGui) {
+            for (MapStore.Mark m : MapStore.alerts()) {
+                if (!m.kind().equals("structure")) continue;
+                Vec3 at = new Vec3(m.x() + 0.5, m.y() + 4, m.z() + 0.5);
+                double d = mc.player.position().distanceTo(at);
+                if (d < 192) dev.erebus.client.render.Visuals.label(ui, at, dev.erebus.client.render.font.Icon.MAP, m.label(), Math.round(d) + "m", m.color());
+            }
+        }
         if (!worldWaypoints.get() || mc.player == null || !MapStore.ready() || mc.options.hideGui) return;
         for (Waypoints.Waypoint w : Waypoints.all()) {
             Vec3 base = new Vec3(w.x() + 0.5, w.y() + 1.5, w.z() + 0.5);
@@ -275,6 +285,14 @@ public final class MapModule extends Module {
 
     @Override
     public void onRenderWorld(WorldRender ctx) {
+        if (visuals() && mc.player != null && MapStore.ready()) {
+            Vec3 cam = ctx.cameraPos();
+            for (MapStore.Mark m : MapStore.alerts()) { // a beam over each structure found nearby
+                if (!m.kind().equals("structure")) continue;
+                Vec3 at = new Vec3(m.x() + 0.5, m.y(), m.z() + 0.5);
+                if (at.distanceToSqr(cam) < 384 * 384) dev.erebus.client.render.Visuals.beam(at, 64, m.color(), 2f);
+            }
+        }
         if (!worldWaypoints.get() || mc.player == null || !MapStore.ready()) return;
         Vec3 cam = ctx.cameraPos();
         for (Waypoints.Waypoint w : Waypoints.all()) {

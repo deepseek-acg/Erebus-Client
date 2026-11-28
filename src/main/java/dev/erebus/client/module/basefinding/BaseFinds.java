@@ -55,30 +55,43 @@ public final class BaseFinds {
     }
 
     static void post(String kind, ResourceKey<Level> dim, AABB area, int placed, int storage, int shulkers, boolean log) {
-        resetOnNewServer();
-        Minecraft mc = Minecraft.getInstance();
-        Find f = new Find(kind, dim, area, placed, storage, shulkers);
-        FINDS.add(f);
-        if (FINDS.size() > 300) FINDS.remove(0);
-
-        Vec3 c = area.getCenter();
-        int x = (int) Math.floor(c.x), y = (int) area.minY, z = (int) Math.floor(c.z);
-        int dist = mc.player != null ? (int) Math.sqrt(mc.player.position().distanceToSqr(c.x, mc.player.getY(), c.z)) : 0;
         StringBuilder what = new StringBuilder();
         if (placed > 0) what.append(placed).append(" player blocks, ");
         what.append(storage).append(" storage");
         if (shulkers > 0) what.append(", ").append(shulkers).append(" shulkers");
-
-        Notifications.push(kind + " found", x + " " + z + " · " + dist + "m", Notifications.Kind.WARNING);
-        Chat.info(kind + " found: " + what + " at " + x + " " + y + " " + z + " (" + dist + "m). Highlight it from the map (M).");
-        MapStore.addAlert(new MapStore.Mark(x, y, z, kind.toLowerCase(Locale.ROOT).contains("stash") ? "stash" : "base",
-                kind + ": " + what, 0));
-        if (log) log(kind, dim, x, y, z, placed, storage, shulkers);
+        String details = String.format(Locale.ROOT, "player-blocks=%d storage=%d shulkers=%d", placed, storage, shulkers);
+        post(new Find(kind, dim, area, placed, storage, shulkers), what.toString(), details, log);
     }
 
-    private static void log(String kind, ResourceKey<Level> dim, int x, int y, int z, int placed, int storage, int shulkers) {
-        String line = String.format(Locale.ROOT, "%s  %s  %s  x=%d y=%d z=%d  player-blocks=%d storage=%d shulkers=%d  server=%s%n",
-                LocalDateTime.now().withNano(0), dim.identifier().getPath(), kind, x, y, z, placed, storage, shulkers, MapStore.server());
+    /**
+     * A find described in words (another module's kind of evidence): {@code what} for the toast, chat and map,
+     * {@code details} (key=value pairs) for the log.
+     */
+    static void post(String kind, ResourceKey<Level> dim, AABB area, String what, String details, boolean log) {
+        post(new Find(kind, dim, area, 0, 0, 0), what, details, log);
+    }
+
+    private static void post(Find f, String what, String details, boolean log) {
+        resetOnNewServer();
+        Minecraft mc = Minecraft.getInstance();
+        FINDS.add(f);
+        if (FINDS.size() > 300) FINDS.remove(0);
+
+        AABB area = f.area();
+        String kind = f.kind();
+        Vec3 c = area.getCenter();
+        int x = (int) Math.floor(c.x), y = (int) area.minY, z = (int) Math.floor(c.z);
+        int dist = mc.player != null ? (int) Math.sqrt(mc.player.position().distanceToSqr(c.x, mc.player.getY(), c.z)) : 0;
+
+        Chat.alert(kind + " found", what + " at " + x + " " + y + " " + z + " (" + dist + "m). Highlight it from the map (M).", Chat.coords(x, y, z));
+        MapStore.addAlert(new MapStore.Mark(x, y, z, kind.toLowerCase(Locale.ROOT).contains("stash") ? "stash" : "base",
+                kind + ": " + what, 0));
+        if (log) log(kind, f.dim(), x, y, z, details);
+    }
+
+    private static void log(String kind, ResourceKey<Level> dim, int x, int y, int z, String details) {
+        String line = String.format(Locale.ROOT, "%s  %s  %s  x=%d y=%d z=%d  %s  server=%s%n",
+                LocalDateTime.now().withNano(0), dim.identifier().getPath(), kind, x, y, z, details, MapStore.server());
         try {
             File dir = new File(Minecraft.getInstance().gameDirectory, "erebus");
             dir.mkdirs();

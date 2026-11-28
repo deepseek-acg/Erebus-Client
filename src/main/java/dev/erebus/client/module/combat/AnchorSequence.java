@@ -256,6 +256,19 @@ public abstract class AnchorSequence extends Module {
         showTarget = add(new BoolSetting("Show target", "Outline the anchor and shield spots while a sequence runs.", true));
         anchorColor = add(new ColorSetting("Anchor color", 0xFFFF6B35).visibleWhen(showTarget::get));
         shieldColor = add(new ColorSetting("Shield color", 0xFFFFD24A).visibleWhen(showTarget::get));
+        addVisuals("Shows each step at the anchor (placing, charging with its charges lit, shielding, detonating), the shield block "
+                + "to come, the blast radius, where it's aiming and who it's for.");
+        addTagSize();
+    }
+
+    /** The opponent this sequence is for, for the visuals (Anchor Aura has one). */
+    protected net.minecraft.world.entity.LivingEntity visualTarget() {
+        return null;
+    }
+
+    /** A line about the spot for the visuals, e.g. the damage it should do. */
+    protected String visualDetail() {
+        return null;
     }
 
     // =====================================================================================================
@@ -946,7 +959,9 @@ public abstract class AnchorSequence extends Module {
 
     @Override
     public void onRenderWorld(WorldRender ctx) {
-        if (!showTarget.get() || !sequenceActive() || anchorPos == null) return;
+        if (!sequenceActive() || anchorPos == null) return;
+        if (visuals()) drawVisuals(ctx);
+        if (!showTarget.get()) return;
         int a = anchorColor.get();
         Gizmos.cuboid(new AABB(anchorPos), GizmoStyle.strokeAndFill(a, 2f, (0x30 << 24) | (a & 0xFFFFFF))).setAlwaysOnTop();
         BlockPos shield = pendingShield != null ? pendingShield.pos() : shieldTarget;
@@ -954,6 +969,76 @@ public abstract class AnchorSequence extends Module {
             int s = shieldColor.get();
             Gizmos.cuboid(new AABB(shield), GizmoStyle.strokeAndFill(s, 2f, (0x30 << 24) | (s & 0xFFFFFF))).setAlwaysOnTop();
         }
+    }
+
+    /** The step the sequence is on, as the visuals show it, and its color. */
+    private String stepName() {
+        return switch (stage) {
+            case PLACE -> "Placing";
+            case CHARGE -> "Charging";
+            case SHIELD, SNEAK_PLACE, UNSNEAK, SHIELD_CHECK -> "Shielding";
+            case DETONATE -> "Detonating";
+            case VERIFY -> "Checking";
+            default -> "Done";
+        };
+    }
+
+    private int stepColor() {
+        return switch (stage) {
+            case PLACE -> 0xFF67E8F9;
+            case CHARGE -> 0xFFFBBF24;
+            case SHIELD, SNEAK_PLACE, UNSNEAK, SHIELD_CHECK -> 0xFF60A5FA;
+            case DETONATE, VERIFY -> 0xFFF87171;
+            default -> 0xFFE5E7EB;
+        };
+    }
+
+    private int charges() {
+        var state = mc.level.getBlockState(anchorPos);
+        return state.hasProperty(net.minecraft.world.level.block.RespawnAnchorBlock.CHARGE)
+                ? state.getValue(net.minecraft.world.level.block.RespawnAnchorBlock.CHARGE) : 0;
+    }
+
+    /** The cosmetic extras: the step at the anchor, its charges, the shield to come, the blast radius, the aim and the target. */
+    private void drawVisuals(WorldRender ctx) {
+        int c = stepColor();
+        net.minecraft.world.phys.Vec3 center = net.minecraft.world.phys.Vec3.atCenterOf(anchorPos);
+        dev.erebus.client.render.Visuals.brackets(new AABB(anchorPos).inflate(0.08), c, 2.5f);
+        dev.erebus.client.render.Visuals.glowBox(new AABB(anchorPos), c, 1.2f, 0x55);
+        // the anchor's charges, as four lamps over it
+        int charges = charges();
+        for (int i = 0; i < 4; i++) {
+            Gizmos.point(center.add(-0.36 + i * 0.24, 0.66, 0), i < charges ? 0xFFFFB020 : 0x66FFFFFF, 8f).setAlwaysOnTop();
+        }
+        // the blast (an anchor explodes with power 5), stronger as it's about to go
+        boolean live = stage == Stage.DETONATE || stage == Stage.VERIFY;
+        dev.erebus.client.render.Visuals.sphere(center, 5, dev.erebus.client.render.Visuals.alpha(0xFFFF5A3C,
+                live ? 0x90 + Math.round(0x60 * dev.erebus.client.render.Visuals.pulse(0.5)) : 0x55), 1.2f);
+        if (live) dev.erebus.client.render.Visuals.ripple(center.add(0, -0.45, 0), 5, 0xFFFF5A3C, 2f, 0.8, 0);
+        // the shield block it's about to put between you and the blast
+        BlockPos shield = pendingShield != null ? pendingShield.pos() : shieldTarget;
+        if (shield != null && (stage == Stage.SHIELD || stage == Stage.SNEAK_PLACE || stage == Stage.SHIELD_CHECK || stage == Stage.UNSNEAK)) {
+            dev.erebus.client.render.Visuals.glowBox(new AABB(shield), 0xFF60A5FA, 1.6f, 0x70);
+            dev.erebus.client.render.Visuals.brackets(new AABB(shield).inflate(0.05), 0xFF93C5FD, 2f);
+        }
+        // where it's aiming from
+        dev.erebus.client.render.Visuals.arc(ctx.tracerStart(), center, 0.3, dev.erebus.client.render.Visuals.fade(c, 0.8f), 1.5f);
+        // and who it's for
+        net.minecraft.world.entity.LivingEntity t = visualTarget();
+        if (t != null && t.isAlive()) {
+            net.minecraft.world.phys.Vec3 lerp = t.getPosition(ctx.partialTick()).subtract(t.position());
+            AABB tb = t.getBoundingBox().move(lerp.x, lerp.y, lerp.z);
+            dev.erebus.client.render.Visuals.brackets(tb.inflate(0.12), 0xFFFF4D6D, 2.2f);
+            dev.erebus.client.render.Visuals.arc(center, tb.getCenter(), 0.9, 0xFFFF4D6D, 1.5f);
+        }
+    }
+
+    @Override
+    public void onRenderOverlay(dev.erebus.client.gui.Ui ui) {
+        if (!visuals() || !sequenceActive() || anchorPos == null || mc.options.hideGui) return;
+        String detail = stage == Stage.CHARGE ? charges() + "/4" : visualDetail();
+        dev.erebus.client.render.Visuals.label(ui, net.minecraft.world.phys.Vec3.atCenterOf(anchorPos).add(0, 1.0, 0),
+                dev.erebus.client.render.font.Icon.TARGET, stepName(), detail, stepColor());
     }
 
     // =====================================================================================================

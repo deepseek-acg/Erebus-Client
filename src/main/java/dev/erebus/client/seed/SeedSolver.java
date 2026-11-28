@@ -101,7 +101,14 @@ public final class SeedSolver {
      * with {@code setLargeFeatureSeed(seed, chunkX, chunkZ)}. The same roll decided mineshafts in 1.12 to 1.17
      * chunks too.
      */
-    public record Mineshaft(int chunkX, int chunkZ) implements Clue {
+    public record Mineshaft(int chunkX, int chunkZ, int sizeX, int sizeZ) implements Clue {
+        public Mineshaft(int chunkX, int chunkZ) {
+            this(chunkX, chunkZ, -1, -1);
+        }
+
+        double bits() {
+            return Math.log(250) / Math.log(2) + (sizeX >= 0 ? Math.log(6) / Math.log(2) : 0) + (sizeZ >= 0 ? Math.log(6) / Math.log(2) : 0);
+        }
     }
 
     /**
@@ -152,16 +159,16 @@ public final class SeedSolver {
     // Forward: what a seed generates (also used to check results)
     // =====================================================================================================
 
-    private static long scramble(long seed) {
+    static long scramble(long seed) {
         return (seed ^ MUL) & MASK48;
     }
 
-    private static long step(long state) {
+    static long step(long state) {
         return (state * MUL + ADD) & MASK48;
     }
 
     /** java.util.Random#nextInt(bound) on a raw 48-bit state; returns {value, newState} packed: value in [0,bound). */
-    private static long nextInt(long[] state, int bound) {
+    static long nextInt(long[] state, int bound) {
         if ((bound & -bound) == bound) {
             state[0] = step(state[0]);
             return (int) ((bound * (state[0] >>> 17)) >> 31);
@@ -199,7 +206,7 @@ public final class SeedSolver {
     }
 
     /** The LCG state {@code setLargeFeatureSeed(seed, chunkX, chunkZ)} leaves. */
-    private static long largeFeatureState(long seed, int chunkX, int chunkZ) {
+    static long largeFeatureState(long seed, int chunkX, int chunkZ) {
         long st = scramble(seed);
         st = step(st);
         int a1 = (int) (st >>> 16);
@@ -222,6 +229,21 @@ public final class SeedSolver {
         long v = nextInt(st, r.poolSize());
         for (int i = 0; i + 1 < r.ranges().length; i += 2) if (v >= r.ranges()[i] && v < r.ranges()[i + 1]) return true;
         return false;
+    }
+
+    /**
+     * Whether a mineshaft starts in this chunk with a start room of the size seen: right after the roll's
+     * {@code nextDouble()}, the room takes {@code 8 + nextInt(6)} for its x width, {@code nextInt(6)} for its height
+     * and {@code 8 + nextInt(6)} for its z width (1.18 on).
+     */
+    public static boolean mineshaftFits(long seed, Mineshaft m) {
+        if (!mineshaftRoll(seed, m.chunkX(), m.chunkZ())) return false;
+        if (m.sizeX() < 0 && m.sizeZ() < 0) return true;
+        long[] st = {step(step(largeFeatureState(seed, m.chunkX(), m.chunkZ())))}; // past nextDouble's two draws
+        int sx = 8 + (int) nextInt(st, 6);
+        nextInt(st, 6);
+        int sz = 8 + (int) nextInt(st, 6);
+        return (m.sizeX() < 0 || sx == m.sizeX()) && (m.sizeZ() < 0 || sz == m.sizeZ());
     }
 
     /** Whether a mineshaft starts in this chunk: {@code setLargeFeatureSeed} then {@code nextDouble() < 0.004}. */
@@ -253,7 +275,7 @@ public final class SeedSolver {
             } else if (c instanceof PillarKeys pk) {
                 if (!pk.allows(pillarKey(seed))) return false;
             } else if (c instanceof Mineshaft m) {
-                if (!mineshaftRoll(seed, m.chunkX(), m.chunkZ())) return false;
+                if (!mineshaftFits(seed, m)) return false;
             } else if (c instanceof StartRoll r) {
                 if (!startRoll(seed, r)) return false;
             }
@@ -282,8 +304,8 @@ public final class SeedSolver {
                 high += -Math.log(ch.frequency()) / Math.log(2);
             } else if (c instanceof OutpostRoll) {
                 high += Math.log(5) / Math.log(2);
-            } else if (c instanceof Mineshaft) {
-                high += Math.log(250) / Math.log(2);
+            } else if (c instanceof Mineshaft m) {
+                high += m.bits();
             } else if (c instanceof StartRoll r) {
                 high += r.bits();
             } else if (c instanceof PillarKeys pk) {
@@ -330,7 +352,7 @@ public final class SeedSolver {
         return (long) Math.min(Long.MAX_VALUE / 2, survivors * Math.pow(2, 48 - width));
     }
 
-    private static int lowBits(int limit) {
+    static int lowBits(int limit) {
         if ((limit & -limit) == limit) return 0; // a power of two takes the top bits, not the low ones
         return Math.min(3, Integer.numberOfTrailingZeros(limit));
     }
@@ -355,6 +377,15 @@ public final class SeedSolver {
      * miss, fewest first.
      */
     public static List<Candidate> structureSeeds(List<Clue> clues, int max, AtomicLong progress, int maxMisses) {
+        return structureSeeds(clues, max, progress, maxMisses, 0);
+    }
+
+    /**
+     * Like {@link #structureSeeds(List, int, AtomicLong, int)}, also letting up to {@code checkMisses} of the clues
+     * that only check seeds (mineshafts, buried treasure, outpost and first-piece rolls) go unexplained. Those cost
+     * nothing to leave out of pass 1, so a misread mineshaft can be allowed for even with few other structures.
+     */
+    public static List<Candidate> structureSeeds(List<Clue> clues, int max, AtomicLong progress, int maxMisses, int checkMisses) {
         List<Spread> spreads = new ArrayList<>();
         List<Chance> chances = new ArrayList<>();
         List<OutpostRoll> rolls = new ArrayList<>();
@@ -419,7 +450,7 @@ public final class SeedSolver {
             outer:
             for (long high = start; high < end; high++) {
                 long seed = (high << lb) | low;
-                int misses = 0;
+                int misses = 0, checks = 0;
                 for (Spread s : sp) {
                     st[0] = ((seed + s.key()) ^ MUL) & MASK48;
                     if (nextInt(st, s.limit()) != s.offsetX() || nextInt(st, s.limit()) != s.offsetZ()) {
@@ -428,18 +459,18 @@ public final class SeedSolver {
                 }
                 for (Chance c : ch) {
                     long state = step(((seed + c.key()) ^ MUL) & MASK48);
-                    if (!((int) (state >>> 24) * 5.9604645E-8F < c.frequency()) && ++misses > allowed) continue outer;
+                    if (!((int) (state >>> 24) * 5.9604645E-8F < c.frequency()) && ++checks > checkMisses) continue outer;
                 }
                 for (OutpostRoll o : ro) {
-                    if (!outpostRoll(seed, o.chunkX(), o.chunkZ()) && ++misses > allowed) continue outer;
+                    if (!outpostRoll(seed, o.chunkX(), o.chunkZ()) && ++checks > checkMisses) continue outer;
                 }
                 for (Mineshaft m : ms) {
-                    if (!mineshaftRoll(seed, m.chunkX(), m.chunkZ()) && ++misses > allowed) continue outer;
+                    if (!mineshaftFits(seed, m) && ++checks > checkMisses) continue outer;
                 }
                 for (StartRoll r : sr) {
-                    if (!startRoll(seed, r) && ++misses > allowed) continue outer;
+                    if (!startRoll(seed, r) && ++checks > checkMisses) continue outer;
                 }
-                found.add(new Candidate(seed, misses));
+                found.add(new Candidate(seed, misses + checks));
                 if (found.size() >= max) return;
             }
             if (progress != null) progress.set(done.incrementAndGet() * 1_000_000L / total);
@@ -450,14 +481,14 @@ public final class SeedSolver {
     }
 
     /** The low parts of the seed that pass 1 leaves, and how many bits they are. */
-    private record Lows(List<Long> lows, int bits) {
+    record Lows(List<Long> lows, int bits) {
     }
 
     /**
      * Pass 1: the low bits every structure's offsets allow (with up to {@code allowed} that don't), carried on to 32
      * bits with the End's pillars if there are any. Null if nothing's left.
      */
-    private static Lows lowParts(List<Spread> spreads, PillarKeys pillars, int allowed) {
+    static Lows lowParts(List<Spread> spreads, PillarKeys pillars, int allowed) {
         int b = 0;
         for (Spread s : spreads) b = Math.max(b, lowBits(s.limit()));
         int lowBits = 17 + b;

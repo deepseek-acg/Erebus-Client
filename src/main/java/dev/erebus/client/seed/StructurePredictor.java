@@ -134,16 +134,36 @@ public final class StructurePredictor {
     private final Set<Long> queued = ConcurrentHashMap.newKeySet();
     private volatile List<Predicted> strongholds = List.of();
 
-    private StructurePredictor(long seed, ResourceKey<Level> dimension) {
+    /**
+     * This server's own structure salts by structure set ("villages"...), or null for the game's own. Sets missing
+     * from it have a salt that isn't known, so nothing is predicted for them (strongholds don't use one).
+     */
+    private final Map<String, Integer> salts;
+
+    private StructurePredictor(long seed, ResourceKey<Level> dimension, Map<String, Integer> salts) {
         this.seed = seed;
         this.dimension = dimension;
+        this.salts = salts == null ? null : Map.copyOf(salts);
         WORKER.submit(this::init);
     }
 
     /** The predictor for this seed and dimension (created, and set up in the background, on first use). */
     public static synchronized StructurePredictor get(long seed, ResourceKey<Level> dimension) {
-        if (current == null || current.seed != seed || !current.dimension.equals(dimension)) current = new StructurePredictor(seed, dimension);
+        Map<String, Integer> salts = dev.erebus.client.module.world.SeedCracker.knownSalts();
+        if (current == null || current.seed != seed || !current.dimension.equals(dimension) || !java.util.Objects.equals(current.salts, salts)) {
+            current = new StructurePredictor(seed, dimension, salts);
+        }
         return current;
+    }
+
+    /** The placement with this server's salt for the set; null when the server's salt for it isn't known. */
+    private RandomSpreadStructurePlacement withSalt(String setPath, RandomSpreadStructurePlacement spread) {
+        if (salts == null) return spread;
+        Integer salt = salts.get(setPath);
+        if (salt == null) return null;
+        var a = (dev.erebus.client.mixin.StructurePlacementAccess) spread;
+        return new RandomSpreadStructurePlacement(a.erebus$locateOffset(), a.erebus$frequencyReductionMethod(), a.erebus$frequency(), salt,
+                a.erebus$exclusionZone(), spread.spacing(), spread.separation(), spread.spreadType());
     }
 
     public boolean ready() {
@@ -197,7 +217,9 @@ public final class StructurePredictor {
                 }
                 if (!here) continue;
                 String setPath = ref.key().identifier().getPath();
-                if (set.placement() instanceof RandomSpreadStructurePlacement spread) {
+                if (set.placement() instanceof RandomSpreadStructurePlacement original) {
+                    RandomSpreadStructurePlacement spread = withSalt(setPath, original);
+                    if (spread == null) continue;
                     sets.add(new SetInfo(i++, setPath, spread, null, entries));
                     if (setPath.equals("villages")) villages = spread;
                 } else if (set.placement() instanceof ConcentricRingsStructurePlacement rings) {

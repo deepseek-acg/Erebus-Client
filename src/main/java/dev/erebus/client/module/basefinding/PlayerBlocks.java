@@ -42,6 +42,11 @@ public final class PlayerBlocks extends Module {
     public static final int PLACED_COLOR = 0xFFFF00FF;
 
     private static final Set<Block> STRONG = new HashSet<>();
+
+    /** Whether the world never generates this block, so only a player could have put it there (concrete, beacons...). */
+    public static boolean isPlayerOnly(Block b) {
+        return STRONG.contains(b);
+    }
     private static final Set<Block> COMMON = commonDefaults();
 
     private final BoolSetting wrongDimension;
@@ -56,7 +61,8 @@ public final class PlayerBlocks extends Module {
     private final Map<Type, BoolSetting> typeOn = new EnumMap<>(Type.class);
 
     private final Map<Long, ChunkData> byChunk = new HashMap<>();
-    private final Map<Long, Integer> entityStructures = new HashMap<>();
+    /** Illagers seen, by chunk: {radius, lowest y, highest y}. */
+    private final Map<Long, int[]> entityStructures = new HashMap<>();
     private final List<Long> queue = new ArrayList<>();
     private int queueIndex, total;
     private int placedCount;
@@ -88,6 +94,7 @@ public final class PlayerBlocks extends Module {
         group("Render");
         fill = add(new BoolSetting("Fill", "Also shade the inside of each box a little (off = outline only).", false));
         maxShown = add(new NumberSetting("Max shown", "Only outline this many blocks (the closest ones), to keep the game smooth.", 400, 50, 1500, 50));
+        addVisuals("The closest placed blocks glow softly instead of a flat fill.");
     }
 
     /** Player-placed and natural-structure counts in view, for the legend HUD element. */
@@ -140,7 +147,9 @@ public final class PlayerBlocks extends Module {
             // illagers live in outposts and mansions (players don't keep them around)
             for (Entity e : mc.level.entitiesForRendering()) {
                 if (e instanceof net.minecraft.world.entity.monster.illager.AbstractIllager) {
-                    entityStructures.merge(ChunkPos.asLong(e.blockPosition().getX() >> 4, e.blockPosition().getZ() >> 4), 4, Math::max);
+                    int y = e.blockPosition().getY();
+                    entityStructures.merge(ChunkPos.asLong(e.blockPosition().getX() >> 4, e.blockPosition().getZ() >> 4), new int[]{4, y, y},
+                            (a, b) -> new int[]{4, Math.min(a[1], b[1]), Math.max(a[2], b[2])});
                 }
             }
             int placed = 0, structures = 0;
@@ -162,12 +171,22 @@ public final class PlayerBlocks extends Module {
     /** What to show for one chunk right now (building materials depend on structures found nearby since). */
     private List<Hit> shown(long key, ChunkData d) {
         List<Hit> out = new ArrayList<>();
-        if (d.strong.size() >= minPerChunk.intValue()) out.addAll(d.strong);
-        if (common.get() && d.materials.size() >= commonMin.intValue()
-                && !(structureCheck.get() && inStructure(ChunkPos.getX(key), ChunkPos.getZ(key)))) {
-            for (BlockPos p : d.materials) out.add(new Hit(p, Type.BuildingMaterials));
+        int cx = ChunkPos.getX(key), cz = ChunkPos.getZ(key);
+        boolean check = structureCheck.get();
+        if (d.strong.size() >= minPerChunk.intValue()) {
+            for (Hit h : d.strong) {
+                if (h.excuse == 0 || !check || (h.excuse & structureKinds(cx, cz, h.pos.getY())) == 0) out.add(h);
+                else if (showStructures.get()) out.add(new Hit(h.pos, Type.NaturalStructures, 0));
+            }
         }
-        if (showStructures.get()) for (BlockPos p : d.markers) out.add(new Hit(p, Type.NaturalStructures));
+        if (common.get() && d.materials.size() >= commonMin.intValue()) {
+            List<Hit> materials = new ArrayList<>();
+            for (BlockPos p : d.materials) {
+                if (!check || structureKinds(cx, cz, p.getY()) == 0) materials.add(new Hit(p, Type.BuildingMaterials, 0));
+            }
+            if (materials.size() >= commonMin.intValue()) out.addAll(materials);
+        }
+        if (showStructures.get()) for (BlockPos p : d.markers) out.add(new Hit(p, Type.NaturalStructures, 0));
         return out;
     }
 
@@ -204,6 +223,10 @@ public final class PlayerBlocks extends Module {
         for (int i = 0; i < limit; i++) {
             Hit h = all.get(i);
             int c = h.type == Type.NaturalStructures ? h.type.color : PLACED_COLOR;
+            if (visuals() && i < 48) { // a soft breathing glow instead of a flat fill
+                dev.erebus.client.render.Visuals.glowBox(new AABB(h.pos), c, 1.5f, 0x55);
+                continue;
+            }
             GizmoStyle style = shade ? GizmoStyle.strokeAndFill(c, 1.5f, (45 << 24) | (c & 0xFFFFFF)) : GizmoStyle.stroke(c, 1.5f);
             Gizmos.cuboid(new AABB(h.pos), style).setAlwaysOnTop();
         }
@@ -254,14 +277,16 @@ public final class PlayerBlocks extends Module {
     }
 
 
-    private record Hit(BlockPos pos, Type type) { }
+    /** A flagged block; {@code excuse} is the kinds of structure it's part of when found in one (see {@link #EXCUSED}). */
+    private record Hit(BlockPos pos, Type type, int excuse) { }
 
     /** Everything found in one chunk. */
     private static final class ChunkData {
         final List<Hit> strong = new ArrayList<>();      // never natural: always shown
         final List<BlockPos> materials = new ArrayList<>(); // building materials not natural for the biome
         final List<BlockPos> markers = new ArrayList<>();   // blocks that prove a natural structure is here
-        int structureRadius = -1;                           // chunks around this one that belong to that structure
+        int structureRadius = -1;                           // chunks around this one that belong to a structure
+        final List<Area> areas = new ArrayList<>();         // what's here: how far around and at what heights
     }
 
 
@@ -329,7 +354,7 @@ public final class PlayerBlocks extends Module {
         Blocks.BLAST_FURNACE, Blocks.SMOKER, Blocks.BARREL, Blocks.CAULDRON, Blocks.BREWING_STAND);
 
     /** How many chunks around a single give-away block count as that structure (0 = not a give-away block). */
-    private static int markerRadius(BlockState s, ResourceKey<Level> dim) {
+    static int markerRadius(BlockState s, ResourceKey<Level> dim) {
         Block b = s.getBlock();
         if (b == Blocks.BELL) return 5;                                                   // village
         if (b == Blocks.END_PORTAL_FRAME) return 6;                                       // stronghold
@@ -337,7 +362,7 @@ public final class PlayerBlocks extends Module {
             || b == Blocks.INFESTED_CRACKED_STONE_BRICKS || b == Blocks.INFESTED_CHISELED_STONE_BRICKS) return 5; // stronghold
         if (b == Blocks.SPAWNER) return 2;                                                // dungeon / mineshaft / fortress
         if (b == Blocks.TRIAL_SPAWNER || b == Blocks.VAULT) return 4;                     // trial chambers
-        if (b == Blocks.REINFORCED_DEEPSLATE || b == Blocks.SCULK_SHRIEKER) return 7;     // ancient city
+        if (b == Blocks.REINFORCED_DEEPSLATE) return 7;                                   // ancient city
         if (b == Blocks.SUSPICIOUS_SAND || b == Blocks.SUSPICIOUS_GRAVEL) return 3;       // pyramid / trail & ocean ruins / well
         if (b == Blocks.CRYING_OBSIDIAN) return 2;                                        // ruined portal
         if (b == Blocks.GILDED_BLACKSTONE) return 5;                                      // bastion
@@ -350,7 +375,7 @@ public final class PlayerBlocks extends Module {
         return b == Blocks.BELL || b == Blocks.END_PORTAL_FRAME || b == Blocks.INFESTED_STONE_BRICKS
             || b == Blocks.INFESTED_MOSSY_STONE_BRICKS || b == Blocks.INFESTED_CRACKED_STONE_BRICKS
             || b == Blocks.INFESTED_CHISELED_STONE_BRICKS || b == Blocks.SPAWNER || b == Blocks.TRIAL_SPAWNER
-            || b == Blocks.VAULT || b == Blocks.REINFORCED_DEEPSLATE || b == Blocks.SCULK_SHRIEKER
+            || b == Blocks.VAULT || b == Blocks.REINFORCED_DEEPSLATE || b == Blocks.DEEPSLATE_BRICKS || b == Blocks.DEEPSLATE_TILES
             || b == Blocks.SUSPICIOUS_SAND || b == Blocks.SUSPICIOUS_GRAVEL || b == Blocks.CRYING_OBSIDIAN
             || b == Blocks.GILDED_BLACKSTONE || b == Blocks.PURPUR_BLOCK || b == Blocks.END_ROD
             || b == Blocks.DIRT_PATH || b == Blocks.COBWEB || b == Blocks.RAIL || b == Blocks.TNT
@@ -359,24 +384,100 @@ public final class PlayerBlocks extends Module {
             || b == Blocks.CHISELED_STONE_BRICKS || b == Blocks.SNOW_BLOCK || s.is(net.minecraft.tags.BlockTags.BEDS);
     }
 
-    private final Map<Long, Boolean> structureCache = new HashMap<>();
+    // Kinds of structure that build with blocks that otherwise never generate (bit = 1 << K_...)
+    private static final int K_ANCIENT_CITY = 0, K_TRIAL_CHAMBERS = 1, K_MANSION = 2, K_RUINS = 3, K_BASTION = 4, K_END_CITY = 5;
+    /** Any structure at all (the bit for building materials). */
+    private static final int ANY = 1 << 6;
 
-    /** True if this chunk is within a natural structure's area (cached until a structure is found or forgotten). */
-    private boolean inStructure(int cx, int cz) {
-        return structureCache.computeIfAbsent(ChunkPos.asLong(cx, cz), k -> computeInStructure(cx, cz));
+    /**
+     * Never-natural blocks that some structures are built with anyway, found by reading every structure the game has:
+     * the redstone in ancient cities' centers, trial chambers' concrete, mansions' diamond and lapis rooms, anvils in
+     * mansions and trail ruins, bastions' quartz bridges, End cities' ender chests. Each is only excused near its own
+     * structure (concrete by a trial chamber is fine, concrete by a village isn't).
+     */
+    private static final Map<Block, Integer> EXCUSED = Map.ofEntries(
+        Map.entry(Blocks.COMPARATOR, 1 << K_ANCIENT_CITY), Map.entry(Blocks.REDSTONE_BLOCK, 1 << K_ANCIENT_CITY),
+        Map.entry(Blocks.TARGET, 1 << K_ANCIENT_CITY), Map.entry(Blocks.NOTE_BLOCK, 1 << K_ANCIENT_CITY),
+        Map.entry(Blocks.WHITE_CONCRETE, 1 << K_TRIAL_CHAMBERS), Map.entry(Blocks.RED_CONCRETE, 1 << K_TRIAL_CHAMBERS),
+        Map.entry(Blocks.DIAMOND_BLOCK, 1 << K_MANSION), Map.entry(Blocks.LAPIS_BLOCK, 1 << K_MANSION),
+        Map.entry(Blocks.DAMAGED_ANVIL, 1 << K_MANSION | 1 << K_RUINS),
+        Map.entry(Blocks.QUARTZ_BLOCK, 1 << K_BASTION), Map.entry(Blocks.SMOOTH_QUARTZ, 1 << K_BASTION),
+        Map.entry(Blocks.ENDER_CHEST, 1 << K_END_CITY));
+
+    /** Which kind of structure a give-away block belongs to (-1 = none we name). */
+    private static int markerKind(BlockState s, ResourceKey<Level> dim) {
+        Block b = s.getBlock();
+        if (b == Blocks.REINFORCED_DEEPSLATE) return K_ANCIENT_CITY;
+        if (b == Blocks.TRIAL_SPAWNER || b == Blocks.VAULT) return K_TRIAL_CHAMBERS;
+        if (b == Blocks.SUSPICIOUS_SAND || b == Blocks.SUSPICIOUS_GRAVEL) return K_RUINS;
+        if (b == Blocks.GILDED_BLACKSTONE) return K_BASTION;
+        if (dim == Level.END && (b == Blocks.PURPUR_BLOCK || b == Blocks.END_ROD)) return K_END_CITY;
+        return -1;
     }
 
-    private boolean computeInStructure(int cx, int cz) {
+    /**
+     * A natural structure found in a chunk: the chunks within {@code radius} of it belong to it, between the heights its
+     * give-away blocks were found at (give or take {@link #MARGIN}). The height matters: mineshafts run under much of
+     * the world, and a base on the surface above one is still a base.
+     */
+    private record Area(int radius, int kinds, int minY, int maxY) {
+    }
+
+    private static final int MARGIN = 24;
+
+    /** Per chunk, the structure areas that reach it: {kinds, lowest y, highest y}. */
+    private final Map<Long, List<int[]>> structureCache = new HashMap<>();
+
+    /** The kinds of structure whose area this block is in, as bits ({@link #ANY} for any at all; 0 = none). */
+    private int structureKinds(int cx, int cz, int y) {
+        int kinds = 0;
+        for (int[] a : structureCache.computeIfAbsent(ChunkPos.asLong(cx, cz), k -> areasReaching(cx, cz))) {
+            if (y >= a[1] - MARGIN && y <= a[2] + MARGIN) kinds |= a[0];
+        }
+        return kinds;
+    }
+
+    private List<int[]> areasReaching(int cx, int cz) {
+        List<int[]> out = new ArrayList<>();
         for (Map.Entry<Long, ChunkData> e : byChunk.entrySet()) {
-            int r = e.getValue().structureRadius;
-            if (r < 0) continue;
-            if (Math.abs(ChunkPos.getX(e.getKey()) - cx) <= r && Math.abs(ChunkPos.getZ(e.getKey()) - cz) <= r) return true;
+            ChunkData d = e.getValue();
+            if (d.areas.isEmpty()) continue;
+            int ddx = Math.abs(ChunkPos.getX(e.getKey()) - cx), ddz = Math.abs(ChunkPos.getZ(e.getKey()) - cz);
+            for (Area a : d.areas) if (ddx <= a.radius && ddz <= a.radius) out.add(new int[]{a.kinds, a.minY, a.maxY});
         }
-        for (Map.Entry<Long, Integer> e : entityStructures.entrySet()) {
-            int r = e.getValue();
-            if (Math.abs(ChunkPos.getX(e.getKey()) - cx) <= r && Math.abs(ChunkPos.getZ(e.getKey()) - cz) <= r) return true;
+        for (Map.Entry<Long, int[]> e : entityStructures.entrySet()) { // illagers: mansions and outposts
+            int[] v = e.getValue();
+            if (Math.abs(ChunkPos.getX(e.getKey()) - cx) <= v[0] && Math.abs(ChunkPos.getZ(e.getKey()) - cz) <= v[0]) {
+                out.add(new int[]{ANY | 1 << K_MANSION, v[1], v[2]});
+            }
         }
-        return false;
+        return out;
+    }
+
+    /** The heights a kind of give-away block was found at in a chunk. */
+    private static final class Span {
+        int min = Integer.MAX_VALUE, max = Integer.MIN_VALUE;
+
+        void add(int y) {
+            min = Math.min(min, y);
+            max = Math.max(max, y);
+        }
+
+        boolean any() {
+            return min <= max;
+        }
+
+        Span with(Span o) {
+            Span s = new Span();
+            s.min = Math.min(min, o.min);
+            s.max = Math.max(max, o.max);
+            return s;
+        }
+    }
+
+    private static void area(ChunkData data, int radius, int kind, Span span) {
+        data.structureRadius = Math.max(data.structureRadius, radius);
+        data.areas.add(new Area(radius, ANY | (kind >= 0 ? 1 << kind : 0), span.min, span.max));
     }
 
     // ---- Biomes ----------------------------------------------------------------------------------
@@ -410,6 +511,60 @@ public final class PlayerBlocks extends Module {
         return false;
     }
 
+    /**
+     * A mineshaft's support: wooden fences two high on both sides of a 3-wide corridor with planks across the top. Rails
+     * and cobwebs (the other give-aways) are often gone, and badlands mineshafts come up to the surface, in dark oak.
+     */
+    private static boolean mineshaftSupport(LevelChunk chunk, BlockPos foot) {
+        if (!chunk.getBlockState(foot.above()).is(net.minecraft.tags.BlockTags.WOODEN_FENCES)) return false;
+        if (!chunk.getBlockState(foot.above(2)).is(net.minecraft.tags.BlockTags.PLANKS)) return false;
+        for (net.minecraft.core.Direction d : new net.minecraft.core.Direction[]{net.minecraft.core.Direction.EAST, net.minecraft.core.Direction.SOUTH}) {
+            BlockPos other = foot.relative(d, 2);
+            if ((other.getX() >> 4) != chunk.getPos().x || (other.getZ() >> 4) != chunk.getPos().z) continue;
+            if (chunk.getBlockState(other).is(net.minecraft.tags.BlockTags.WOODEN_FENCES)
+                    && chunk.getBlockState(other.above()).is(net.minecraft.tags.BlockTags.WOODEN_FENCES)
+                    && chunk.getBlockState(foot.relative(d).above(2)).is(net.minecraft.tags.BlockTags.PLANKS)
+                    && chunk.getBlockState(other.above(2)).is(net.minecraft.tags.BlockTags.PLANKS)
+                    && !chunk.getBlockState(foot.relative(d)).isSolidRender()) return true;
+        }
+        return false;
+    }
+
+    private boolean neighboursLoaded(int cx, int cz, int r) {
+        for (int dx = -r; dx <= r; dx++) for (int dz = -r; dz <= r; dz++) {
+            if (mc.level.getChunkSource().getChunk(cx + dx, cz + dz, ChunkStatus.FULL, false) == null) return false;
+        }
+        return true;
+    }
+
+    private boolean touchesFluid(BlockPos pos) {
+        for (net.minecraft.core.Direction d : net.minecraft.core.Direction.values()) {
+            if (!mc.level.getFluidState(pos.relative(d)).isEmpty()) return true;
+        }
+        return false;
+    }
+
+    private record CellBlock(long cell, Block block) {
+    }
+
+    /**
+     * True if this block is natural for the biome it's in or for one close by. Biome borders aren't on the 4-block grid
+     * the game stores biomes in (each block's biome is picked with some jitter), terracotta bands and snow run a little
+     * past them, and icebergs spill out of frozen oceans onto the shore, so one look at one spot isn't enough.
+     */
+    private boolean naturalNear(BlockState st, BlockPos pos, Map<Long, String> noise) {
+        Block b = st.getBlock();
+        int r = b == Blocks.ICE || b == Blocks.PACKED_ICE || b == Blocks.BLUE_ICE ? 4 : 2; // in 4-block cells
+        int qx = pos.getX() >> 2, qy = pos.getY() >> 2, qz = pos.getZ() >> 2;
+        for (int dy = -1; dy <= 1; dy++) for (int dx = -r; dx <= r; dx++) for (int dz = -r; dz <= r; dz++) {
+            int x = qx + dx, y = qy + dy, z = qz + dz;
+            String biome = noise.computeIfAbsent(BlockPos.asLong(x, y, z), k -> mc.level.getNoiseBiome(x, y, z).unwrapKey()
+                    .map(key -> key.identifier().getPath()).orElse(""));
+            if (naturalForBiome(st, biome)) return true;
+        }
+        return false;
+    }
+
     private static boolean naturalForBiome(BlockState s, String biome) {
         Block b = s.getBlock();
         String id = BuiltInRegistries.BLOCK.getKey(b).getPath();
@@ -418,6 +573,7 @@ public final class PlayerBlocks extends Module {
         if (b == Blocks.ICE || b == Blocks.PACKED_ICE || b == Blocks.BLUE_ICE) return coldBiome(biome) || biome.contains("river");
         if (id.endsWith("terracotta") && !id.endsWith("glazed_terracotta")) return biome.contains("badlands");
         if (id.contains("prismarine") || b == Blocks.SEA_LANTERN) return biome.contains("ocean");
+        if (b == Blocks.MOSSY_COBBLESTONE) return biome.contains("old_growth") && biome.contains("taiga"); // forest rocks
         // Shipwrecks and ocean ruins: wood, wooden doors/trapdoors/fences and stone bricks in oceans and on beaches
         if (ocean && (id.endsWith("_planks") || id.endsWith("_fence") || id.endsWith("_door") || id.endsWith("_trapdoor")
             || id.contains("stone_brick") || b == Blocks.CHISELED_STONE_BRICKS)) return true;
@@ -430,13 +586,20 @@ public final class PlayerBlocks extends Module {
         LevelChunk chunk = mc.level.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false);
         if (chunk == null) { byChunk.remove(key); return; }
         ResourceKey<Level> dim = mc.level.dimension();
-        boolean wd = wrongDimension.get(), com = common.get(), bio = biomeCheck.get();
+        boolean bio = biomeCheck.get(), wd = wrongDimension.get();
+        // building materials depend on the biome and on structures nearby: the client reads the biome of a chunk it
+        // hasn't got (past your render distance) as plains, and a village's outer houses can be in view while the bell
+        // and paths that give it away aren't. So chunks near the edge wait until those around them have loaded.
+        boolean com = common.get() && neighboursLoaded(cx, cz, 2);
         ChunkData data = new ChunkData();
         Set<Block> jobSites = new HashSet<>();
-        boolean path = false, cobweb = false, rail = false, tnt = false, chiseledSand = false, mossyCobble = false,
-            chiseledBricks = false, snow = false, bed = false;
-        boolean[] deepBricks = new boolean[3]; // stone / mossy / cracked stone bricks below y 40 (strongholds)
-        Map<Long, String> biomeCache = new HashMap<>();
+        Span jobs = new Span(), path = new Span(), cobweb = new Span(), rail = new Span(), tnt = new Span(), chiseledSand = new Span(),
+            mossyCobble = new Span(), chiseledBricks = new Span(), snow = new Span(), bed = new Span(), deepslateBricks = new Span(),
+            deepslateTiles = new Span(), support = new Span();
+        Span[] deepBricks = {new Span(), new Span(), new Span()}; // stone / mossy / cracked stone bricks below y 40 (strongholds)
+        Map<Integer, Span> markerSpans = new HashMap<>(); // by radius * 16 + kind + 1
+        Map<Long, String> noise = new HashMap<>();
+        Map<CellBlock, Boolean> naturalCache = new HashMap<>();
 
         LevelChunkSection[] sections = chunk.getSections();
         for (int i = 0; i < sections.length; i++) {
@@ -453,44 +616,59 @@ public final class PlayerBlocks extends Module {
                 BlockPos pos = new BlockPos((cx << 4) + x, baseY + y, (cz << 4) + z);
 
                 int mr = markerRadius(st, dim);
-                if (mr > 0) { data.markers.add(pos); data.structureRadius = Math.max(data.structureRadius, mr); }
-                if (JOB_SITES.contains(b)) jobSites.add(b);
-                if (b == Blocks.DIRT_PATH) path = true;
-                if (b == Blocks.COBWEB) cobweb = true;
-                if (b == Blocks.RAIL) rail = true;
-                if (b == Blocks.TNT) tnt = true;
-                if (b == Blocks.CHISELED_SANDSTONE) chiseledSand = true;
-                if (b == Blocks.MOSSY_COBBLESTONE) mossyCobble = true;
-                if (b == Blocks.CHISELED_STONE_BRICKS) chiseledBricks = true;
-                if (b == Blocks.SNOW_BLOCK) snow = true;
-                if (st.is(net.minecraft.tags.BlockTags.BEDS)) bed = true;
-                if (pos.getY() < 40) {
-                    if (b == Blocks.STONE_BRICKS) deepBricks[0] = true;
-                    if (b == Blocks.MOSSY_STONE_BRICKS) deepBricks[1] = true;
-                    if (b == Blocks.CRACKED_STONE_BRICKS) deepBricks[2] = true;
+                int py = pos.getY();
+                if (mr > 0) {
+                    data.markers.add(pos);
+                    int k = markerKind(st, dim);
+                    markerSpans.computeIfAbsent(mr * 16 + k + 1, q -> new Span()).add(py);
+                }
+                if (JOB_SITES.contains(b)) { jobSites.add(b); jobs.add(py); }
+                if (b == Blocks.DIRT_PATH) path.add(py);
+                if (b == Blocks.COBWEB) cobweb.add(py);
+                if (b == Blocks.RAIL) rail.add(py);
+                if (st.is(net.minecraft.tags.BlockTags.WOODEN_FENCES) && mineshaftSupport(chunk, pos)) support.add(py);
+                if (b == Blocks.TNT) tnt.add(py);
+                if (b == Blocks.CHISELED_SANDSTONE) chiseledSand.add(py);
+                if (b == Blocks.MOSSY_COBBLESTONE) mossyCobble.add(py);
+                if (b == Blocks.CHISELED_STONE_BRICKS) chiseledBricks.add(py);
+                if (b == Blocks.SNOW_BLOCK) snow.add(py);
+                if (st.is(net.minecraft.tags.BlockTags.BEDS)) bed.add(py);
+                if (py < 0 && b == Blocks.DEEPSLATE_BRICKS) deepslateBricks.add(py);
+                if (py < 0 && b == Blocks.DEEPSLATE_TILES) deepslateTiles.add(py);
+                if (py < 40) {
+                    if (b == Blocks.STONE_BRICKS) deepBricks[0].add(py);
+                    if (b == Blocks.MOSSY_STONE_BRICKS) deepBricks[1].add(py);
+                    if (b == Blocks.CRACKED_STONE_BRICKS) deepBricks[2].add(py);
                 }
 
-                if (STRONG.contains(b)) data.strong.add(new Hit(pos, TYPES.getOrDefault(b, Type.Custom)));
-                else if (wd && wrongDim(st, dim)) data.strong.add(new Hit(pos, Type.WrongDimension));
+                if (STRONG.contains(b)) data.strong.add(new Hit(pos, TYPES.getOrDefault(b, Type.Custom), EXCUSED.getOrDefault(b, 0)));
+                else if (wd && wrongDim(st, dim)) data.strong.add(new Hit(pos, Type.WrongDimension, 0));
                 else if (com && COMMON.contains(b) && !NEVER_FLAG.contains(b)) {
                     String id = BuiltInRegistries.BLOCK.getKey(b).getPath();
                     if (bio && naturalForDimension(b, id, dim)) continue;
+                    if (bio && b == Blocks.COBBLESTONE && touchesFluid(pos)) continue; // lava flowed into water here
                     if (bio) {
                         long cell = BlockPos.asLong(pos.getX() >> 2, pos.getY() >> 2, pos.getZ() >> 2);
-                        String biome = biomeCache.computeIfAbsent(cell, c -> biomeAt(pos));
-                        if (naturalForBiome(st, biome)) continue;
+                        if (naturalCache.computeIfAbsent(new CellBlock(cell, b), k -> naturalNear(st, pos, noise))) continue;
                     }
                     data.materials.add(pos);
                 }
             }
         }
+        for (Map.Entry<Integer, Span> e : markerSpans.entrySet()) area(data, e.getKey() / 16, e.getKey() % 16 - 1, e.getValue());
         // Structures recognised by combinations of blocks
-        if (path && jobSites.size() >= 2) data.structureRadius = Math.max(data.structureRadius, 4);   // village
-        if (rail && cobweb) data.structureRadius = Math.max(data.structureRadius, 3);                 // mineshaft
-        if (tnt && chiseledSand) data.structureRadius = Math.max(data.structureRadius, 2);            // desert pyramid
-        if (mossyCobble && chiseledBricks) data.structureRadius = Math.max(data.structureRadius, 2);  // jungle temple
-        if (snow && bed && biomeAt(new BlockPos(cx << 4, 64, cz << 4)).contains("snow")) data.structureRadius = Math.max(data.structureRadius, 1); // igloo
-        if (deepBricks[0] && deepBricks[1] && deepBricks[2]) data.structureRadius = Math.max(data.structureRadius, 4); // stronghold
+        if (path.any() && jobSites.size() >= 2) area(data, 4, -1, path.with(jobs));                         // village
+        if (rail.any() && cobweb.any()) area(data, 3, -1, rail.with(cobweb));                               // mineshaft
+        if (support.any()) area(data, 3, -1, support);                                                      // mineshaft
+        if (tnt.any() && chiseledSand.any()) area(data, 2, -1, tnt.with(chiseledSand));                     // desert pyramid
+        if (mossyCobble.any() && chiseledBricks.any()) area(data, 2, -1, mossyCobble.with(chiseledBricks)); // jungle temple
+        if (snow.any() && bed.any() && biomeAt(new BlockPos(cx << 4, 64, cz << 4)).contains("snow")) area(data, 1, -1, snow.with(bed)); // igloo
+        if (deepBricks[0].any() && deepBricks[1].any() && deepBricks[2].any()) {
+            area(data, 4, -1, deepBricks[0].with(deepBricks[1]).with(deepBricks[2]));                       // stronghold
+        }
+        // ancient city: deepslate bricks and tiles together deep down (no other structure has both; sculk shriekers,
+        // which used to count, grow all over the deep dark on their own, under most big mountains)
+        if (deepslateBricks.any() && deepslateTiles.any()) area(data, 3, K_ANCIENT_CITY, deepslateBricks.with(deepslateTiles));
 
         if (data.strong.isEmpty() && data.materials.isEmpty() && data.structureRadius < 0) { byChunk.remove(key); return; }
         ChunkData before = byChunk.put(key, data);

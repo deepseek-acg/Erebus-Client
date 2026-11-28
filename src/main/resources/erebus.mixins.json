@@ -14,7 +14,17 @@
     "JigsawAccess$Element",
     "JigsawAccess$Structure",
     "KeyboardHandlerMixin",
-    "MouseHandlerMixin"
+    "MouseHandlerMixin",
+    "EntityEventPacketMixin",
+    "StructurePlacementAccess",
+    "KeyboardHandlerAccess",
+    "MouseHandlerAccess",
+    "ContainerScreenAccess",
+    "XRayBlockStateMixin",
+    "XRayFluidMixin",
+    "BlockUpdateMixin",
+    "ActivityPacketsMixin",
+    "MinecraftAccess"
   ],
   "injectors": {
     "defaultRequire": 1

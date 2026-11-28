@@ -70,8 +70,18 @@ public final class ClientPage extends Page {
         py = screen.paneHeader(pane, px, py, pw, "Client", null, null, null);
 
         py = SettingsBuilder.section(pane, "Interface", px, py, pw);
-        py = SettingsBuilder.build(pane, Erebus.client().all(), px, py, pw, DashboardScreen.W, DashboardScreen.H, screen::rebuild);
+        py = SettingsBuilder.build(pane, Erebus.client().interfaceSettings(), px, py, pw, DashboardScreen.W, DashboardScreen.H, screen::rebuild);
         py = screen.paragraph(pane, px, py + 2, pw, "Menu scale applies the next time you open the menu.");
+
+        py = SettingsBuilder.section(pane, "Messages", px, py, pw);
+        py = SettingsBuilder.build(pane, Erebus.client().messageSettings(), px, py, pw, DashboardScreen.W, DashboardScreen.H, screen::rebuild);
+        py = screen.paragraph(pane, px, py + 2, pw, "Everything the modules tell you shows as a notification and is kept on the "
+                + "Messages page, with buttons to copy coordinates or a seed.");
+
+        py = SettingsBuilder.section(pane, "World tags", px, py, pw);
+        py = SettingsBuilder.build(pane, Erebus.client().tagSettings(), px, py, pw, DashboardScreen.W, DashboardScreen.H, screen::rebuild);
+        py = screen.paragraph(pane, px, py + 2, pw, "The labels over finds, lit areas, activity, players and waypoints. Modules that "
+                + "draw them have their own Tag size too, to make one module's tags smaller than the rest.");
 
         py = SettingsBuilder.section(pane, "Keybinds", px, py, pw);
         for (Object[] kb : new Object[][]{{"Open menu", Erebus.menuKey()}, {"Open map", Erebus.mapKey()}}) {

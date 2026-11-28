@@ -8,7 +8,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Feeds {@link MouseSim}'s synthetic mouse counts into the game's own mouse handling, once per frame. */
+/** Feeds {@link MouseSim}'s synthetic mouse counts (and Aim Assist's pull) into the game's own mouse handling, once per frame. */
 @Mixin(MouseHandler.class)
 public abstract class MouseHandlerMixin {
     @Shadow
@@ -19,7 +19,14 @@ public abstract class MouseHandlerMixin {
     @Inject(method = "handleAccumulatedMovement", at = @At("HEAD"))
     private void erebus$syntheticMouse(CallbackInfo ci) {
         MouseSim.noteUserMovement(accumulatedDX, accumulatedDY);
-        if (!MouseSim.active()) return;
+        if (!MouseSim.active()) { // nothing is turning the camera: Aim Assist may add its pull to the player's own movement
+            double[] a = dev.erebus.client.module.combat.AimAssist.frameDelta(accumulatedDX, accumulatedDY);
+            if (a != null) {
+                accumulatedDX += a[0];
+                accumulatedDY += a[1];
+            }
+            return;
+        }
         if (MouseSim.returning() && (accumulatedDX != 0 || accumulatedDY != 0)) { // the player took the mouse back
             MouseSim.stop();
             return;

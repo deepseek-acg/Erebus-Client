@@ -34,7 +34,6 @@ public final class LogoutSpots extends Module {
 
     private final BoolSetting notify = add(new BoolSetting("Chat messages", "Say in chat when someone logs out near you (and when they come back).", true));
     private final BoolSetting tracers = add(new BoolSetting("Tracers", "Draw a line to each logout spot.", false));
-    private final NumberSetting tagScale = add(new NumberSetting("Tag size", "How big the name tags are.", 1.0, 0.5, 2.5, 0.1));
     private final NumberSetting maxAge = add(new NumberSetting("Forget after", "Remove spots after this many minutes (0 = keep until they "
             + "log back in or you leave the server).", 0, 0, 120, 5).unit(" min"));
 
@@ -48,6 +47,8 @@ public final class LogoutSpots extends Module {
 
     public LogoutSpots() {
         super("Logout Spots", "Marks where players were standing when they logged out.", Category.RENDER);
+        addVisuals("A ghost of the player where they logged out, with a halo.");
+        addTagSize();
     }
 
     @Override
@@ -124,6 +125,17 @@ public final class LogoutSpots extends Module {
         for (Spot sp : spots) {
             if (sp.dim != dim) continue;
             Gizmos.cuboid(sp.box, GizmoStyle.strokeAndFill(COLOR, 2f, 0x40FF9A2E)).setAlwaysOnTop();
+            if (visuals()) { // a ghost: head and body, fading in and out, with a halo
+                AABB b = sp.box;
+                Vec3 c = b.getCenter();
+                float f = 0.35f + 0.45f * dev.erebus.client.render.Visuals.pulse(2.4);
+                double hw = 0.25, bodyTop = b.maxY - 0.5;
+                Gizmos.cuboid(new AABB(c.x - hw, bodyTop, c.z - hw, c.x + hw, b.maxY, c.z + hw),
+                        GizmoStyle.strokeAndFill(dev.erebus.client.render.Visuals.fade(0xFFFFE8CC, f), 1.5f, dev.erebus.client.render.Visuals.alpha(0xFFFFE8CC, Math.round(0x60 * f)))).setAlwaysOnTop();
+                Gizmos.cuboid(new AABB(c.x - 0.25, b.minY + 0.75, c.z - 0.13, c.x + 0.25, bodyTop, c.z + 0.13),
+                        GizmoStyle.strokeAndFill(dev.erebus.client.render.Visuals.fade(0xFFFFE8CC, f), 1.5f, dev.erebus.client.render.Visuals.alpha(0xFFFFE8CC, Math.round(0x40 * f)))).setAlwaysOnTop();
+                dev.erebus.client.render.Visuals.ring(new Vec3(c.x, b.maxY + 0.2, c.z), 0.3, COLOR, 2f, 20);
+            }
             if (tracers.get()) Gizmos.line(start, sp.box.getCenter(), COLOR, 1.5f).setAlwaysOnTop();
         }
     }
@@ -140,12 +152,7 @@ public final class LogoutSpots extends Module {
             if (p == null) continue;
             String detail = Math.round(sp.health) + " hp \u00b7 " + ago(nowMs - sp.time) + " \u00b7 "
                     + Math.round(mc.player.position().distanceTo(sp.box.getBottomCenter())) + "m";
-            float scale = tagScale.floatValue();
-            ui.g.pose().pushMatrix();
-            ui.g.pose().translate(p[0], p[1]);
-            ui.g.pose().scale(scale, scale);
-            ui.worldLabel(dev.erebus.client.render.font.Icon.PLAYER, sp.name, detail, COLOR, 0, -16);
-            ui.g.pose().popMatrix();
+            ui.worldLabel(dev.erebus.client.render.font.Icon.PLAYER, sp.name, detail, COLOR, p[0], p[1] - 16);
         }
     }
 

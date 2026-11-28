@@ -25,17 +25,22 @@ public final class SuppliesElement extends HudElement {
     private final List<Integer> counts = new ArrayList<>();
 
     public SuppliesElement() {
-        super("supplies", "Supplies", "Totems, crystals, gapples and other items you carry.", true,
+        super("supplies", "Supplies", "Totems, crystals, golden apples and other items you carry.", true,
                 HAnchor.LEFT, VAnchor.BOTTOM, 4, 46);
         supply("Totems", Items.TOTEM_OF_UNDYING, 23);
         supply("Crystals", Items.END_CRYSTAL, 448);
-        supply("Gapples", Items.ENCHANTED_GOLDEN_APPLE, 61);
+        supply("Gapples", Items.GOLDEN_APPLE, 61);
+        supply("Enchanted gapples", Items.ENCHANTED_GOLDEN_APPLE, 3, false);
         supply("Obsidian", Items.OBSIDIAN, 320);
         supply("XP bottles", Items.EXPERIENCE_BOTTLE, 128);
     }
 
     private void supply(String name, Item item, int previewCount) {
-        supplies.add(new Supply(add(new BoolSetting(name, true)), item, previewCount));
+        supply(name, item, previewCount, true);
+    }
+
+    private void supply(String name, Item item, int previewCount, boolean on) {
+        supplies.add(new Supply(add(new BoolSetting(name, on)), item, previewCount));
     }
 
     @Override

@@ -45,7 +45,39 @@ To start a development client:
 - **Theme** starts from a preset (Void, Abyss, Ember, Mono). You can then change every color with an
   HSV picker or hex code, plus corner radius, panel opacity, drop shadow, background blur, text
   shadow and animations. Changes apply live.
-- **Client** has the menu scale, menu keybind and general preferences.
+- The dashboard remembers where you were: the page, the module (or HUD element, or message filter)
+  picked on each page and how far each list and settings pane is scrolled, until the game closes.
+- It opens with a fade and a little spring and fades away when closed; pages crossfade, the
+  highlight glides to the page or module you pick, and a module's settings cascade in row by row.
+  Turn animations off on the Theme page.
+- **Messages** keeps everything the modules told you this session (finds, alerts, seeds,
+  triangulated withers), newest first, grouped by module, with buttons to copy coordinates, the seed
+  or the whole message. The sidebar shows how many came in since you last looked.
+- **Client** has the menu scale, menu keybind and general preferences, the World tags settings and
+  Also in chat.
+
+### Messages and notifications
+
+Nothing goes to Minecraft's chat. Every message appears as a notification in the corner (the
+Notifications HUD element), wrapped over a few lines and staying up longer the longer it is, and is
+kept on the Messages page. The Notifications element has the toast duration, message width and how
+many lines of a long message to show. **Also in chat** on the Client page puts messages in chat too,
+only for you.
+
+### World tags
+
+The labels floating in the world (Light Finder's lights, Activity Radar's spots, Stash ESP's bases,
+Seed Cracker's structures, players, waypoints, logout spots, the combat modules' targets) all follow
+the **World tags** settings on the Client page:
+
+- **Tag size** (0.85x by default) and **Tag opacity**.
+- **Shrink with distance**: far tags are drawn smaller, down to 60% at 160 blocks.
+- **Fade near crosshair**: a tag right where you're looking fades, so it doesn't hide what you aim at.
+- **Tag details**: the second part (distance, counts, how long ago) always, only for tags near the
+  crosshair, or never.
+
+Each module that draws tags also has its own **Tag size** (under Tags in its settings), on top of the
+client-wide one, to make one module's tags smaller than the rest.
 
 ### HUD editor
 
@@ -57,24 +89,45 @@ press H to hide it entirely.
 Each element is stored relative to the nearest screen edge, so layouts keep their place when the
 window size or GUI scale changes.
 
-Built-in elements: Watermark, Module list, Coordinates (with Nether/Overworld conversion and
-facing), Server info (FPS, ping, speed), Nearby players, Supplies (totems, crystals, gapples,
-obsidian, XP bottles), Armor, and Notifications.
+Built-in elements: Watermark, Module list (modules slide in and out as you toggle them),
+Coordinates (with Nether/Overworld conversion and facing), Server info (FPS, ping, speed), Nearby
+players, Supplies (totems, crystals, golden apples, obsidian, XP bottles; enchanted golden apples
+can be turned on too), Armor, Minimap, Finder legend and Notifications (drawn over the others), and:
+
+| Element | What it shows |
+| --- | --- |
+| Compass | A heading tape across the top: directions and degrees sliding past as you turn, your waypoints and the bases and stashes found so far marked where they lie (with a name and distance when you face one, an arrow at the edge for those behind you). |
+| Rotation | Exact yaw and pitch on a heading dial and pitch gauge, the nearest axis or diagonal and how far off it you are, green when you're on it and which way to turn: for lining up on a highway. |
+| Hunger | Ten food segments with the hidden saturation laid over them in gold, the numbers, and when it matters: no regen below 18 food, no sprinting at 6. |
+| Effects | Potion effects with their level and time left, each with a bar running down; good ones first, harmful ones tinted, ones about to run out blink. |
+| Target | The player you're fighting (looking at, last hit, or nearest in range): face, health with the part just lost draining away and absorption in gold, distance, totem pops, totem in hand, armor wear. |
+| Speed graph | Your speed over the last few seconds as a filled graph, with now, average and peak, in blocks/s or km/h. |
+| World info | Day and time, moon phase, biome, block and sky light at your feet (and whether monsters can spawn there, or will at night), chunk, your spot in it and region file. |
+
+The new elements start off; turn them on from the HUD page, or with a layout preset (PvP adds Target,
+Effects and Hunger; Travel adds Compass, Rotation and Speed graph; Base adds Compass and World info).
 
 ## Modules
 
 | Module | Category | What it does |
 | --- | --- | --- |
 | Map | World | Records a map of every chunk you load, per server and dimension, and recognises structures (trial chambers, ancient cities, strongholds, monuments, fortresses, bastions, end cities, temples, swamp huts and more), each confirmed against its real layout so builds aren't flagged. On by default. |
-| Seed Cracker | World | Works out the world seed from desert pyramids, jungle temples, swamp huts, igloos, villages, pillager outposts, mineshafts, buried treasure and the End's pillars. Proof of concept for servers with vanilla world generation settings. |
+| Seed Cracker | World | Works out the world seed from desert pyramids, jungle temples, swamp huts, igloos, villages, pillager outposts, mineshafts, buried treasure and the End's pillars, including on Spigot and Paper servers that set their own structure salts (and works those salts out). |
 | Stash ESP | Basefinding | Outlines and tracers to storage and other base giveaways (chests, shulkers, ender chests, furnaces, villagers, item frames, chest minecarts...). Alerts when an area looks like a base or a stash, marks it on the map and logs it to `erebus/finds.txt`. |
 | Player Blocks | Basefinding | Highlights blocks the world never generates (concrete, shulkers, beacons, mineral blocks, redstone parts...) and building materials where they don't belong, skipping natural structures and biomes where they occur naturally. Lets Stash ESP tell bases from stashes. |
+| Light Finder | Basefinding | Finds light nature doesn't explain: player-made lights and lit space underground or indoors, ignoring lava, glow lichen, Nether glowstone, mineshaft torches and the lights of villages and other structures. Flags lit furnaces, beacons, portals and lights above the Nether roof, and alerts when a light is placed nearby. |
+| Activity Radar | Basefinding | Shows activity you can't see, with exact positions through rock: machines running (dispensers, pistons, redstone, spawners), chests opening, blocks broken or placed, doors and levers, minecarts rolling; triangulates withers, dragon deaths and End portals across the dimension. Alerts when someone is at work nearby. |
 | Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
 | Freecam | Render | Flies the camera away from your player while your player stays put. Client-side only. Ported from Nyx. |
 | Fullbright | Render | Lights everything up, like a permanent Night Vision only you see. Client-side only. Ported from Nyx. |
 | Logout Spots | Render | Marks where players were standing when they logged out, with name, health and how long ago. |
+| Player ESP | Render | Boxes, tracers and name tags on other players through walls, with health, distance, ping, held item, armor and totem pops. Ported from Nyx. |
+| X-Ray | Render | Shows only ores, spawners, storage and the blocks you pick; dims ores that are probably fakes on anti-xray servers and outlines the real ones; shades caves, lava and water. Ported from Nyx. |
+| XP Optimizer | Player | Throws experience bottles with a human click rhythm (wandering click speed, Gaussian jitter) and stops as soon as the XP on its way will finish repairing your mending gear. Hold right-click, or bind it to throw until repaired and turn off. |
+| Auto Totem | Combat | Keeps a totem in your offhand with a random, ping-adjusted delay, by real key presses and cursor moves; Smart mode reacts to crystals, anchors, beds, falls and maces, not just low health. Ported from Nyx. |
 | Auto Safe Anchor | Combat | One press: places a respawn anchor where you look, charges it, puts a shield block between you and the blast, detonates it, then turns off. Ported from Mist. |
 | Crystal Aura | Combat | Places and breaks end crystals on nearby opponents as fast as the server answers, sticking to one spot and placing obsidian only when it clearly pays off. Ported from Mist. |
+| Aim Assist | Combat | Pulls your view towards the opponent you're aiming near, on top of your own mouse movement: variable speed with a cap, Gaussian speed and aim-point randomness, friend/team/bot filters, prediction and projectile drop compensation. |
 | Anchor Aura | Combat | Runs the same sequence by itself at whichever nearby spot hurts an opponent most, never inside anyone's hitbox and never at a spot that could kill you. Ported from Mist. |
 
 Map, Stash ESP, Player Blocks, Old Chunks and Logout Spots are ported from Nyx and adapted to
@@ -86,7 +139,7 @@ navigator integration and editable block lists were not ported.
 
 ## Combat modules and simulated input
 
-Auto Safe Anchor, Anchor Aura and Crystal Aura never build interactions or packets themselves. Everything they do
+Auto Safe Anchor, Anchor Aura, Crystal Aura and Aim Assist never build interactions or packets themselves. Everything they do
 is simulated input that the game then handles exactly like a player's:
 
 - the hotbar slot is picked by pressing its number key (`input/InputSim`),
@@ -127,7 +180,7 @@ back and looks back only once no new anchor has followed for a moment, not after
 
 **Trying them in singleplayer.** Crystal Aura and Anchor Aura only go for other players unless
 "Target mobs" is on, and a singleplayer world has none, so turn it on and use a hostile mob (a zombie
-with no AI makes a good dummy). Turning either on in singleplayer without it says so in chat, and
+with no AI makes a good dummy). Turning either on in singleplayer without it says so in a message, and
 the module list shows why either is idle ("no players: turn on Target mobs", "no crystals", "no
 glowstone in your hotbar", "no good spot"...).
 
@@ -178,7 +231,11 @@ Less annoying to use:
   after each click.
 - It pauses while you eat or block, while you hold the use key, and (by default) unless you hold a
   weapon, an end crystal or nothing, so it never fires while you build.
-- Flicking the mouse while it turns makes it drop the crystal and stay out of the way briefly.
+- Flicking the mouse away from where it's aiming (net, over 150 ms) makes it drop the crystal and stay
+  out of the way briefly. Following the opponent doesn't count: movement towards the spot is ignored,
+  and back-and-forth tracking cancels out. Right after you hit someone it takes half as much again,
+  and the turn to the spot holds the camera even with Hold camera off, so the click lands while
+  you're still following them.
 - It can run always, only for a moment after you hit someone with a weapon, or only while a key
   is held.
 - It breaks crystals already standing near the opponent when that's worth it (one click instead of
@@ -187,6 +244,42 @@ Less annoying to use:
 Mist's silent rotations, burst/idle pacing, server presets and session fatigue were not ported.
 Timing, camera movement, damage limits and targeting have the same kind of settings as the anchor
 modules.
+
+### Aim Assist
+
+Helps your aim rather than aiming for you. While an opponent is inside the FOV cone around your
+crosshair, the view is pulled towards them by adding mouse movement to your own each frame (the same
+synthetic mouse path as the other combat modules: through your sensitivity, in whole mouse counts).
+It never holds the camera, and it steps aside while another module is turning it.
+
+- **Speed.** `Base speed + Variable speed × degrees off target`, so it pulls harder when you're far
+  off and eases in as you close on them, never above **Speed cap**. It ramps in over **Ramp up**
+  after picking a target so it never snaps, drops to **On-target strength** once your crosshair is on
+  their hitbox, and has separate **Horizontal** and **Vertical** strength.
+- **Gaussian.** The speed wanders around its value as a smooth Gaussian process
+  (Ornstein–Uhlenbeck): **Speed spread** is its standard deviation, **Speed smoothness** how slowly
+  it drifts. The point it aims at drifts inside the hitbox the same way (**Point spread**, **Point
+  smoothness**), so it doesn't track one fixed pixel.
+- **Aim at.** The point of the hitbox nearest your crosshair (most natural), or head, chest, body or
+  legs. **Prediction** leads a moving target by a few ticks of their movement, to cover ping.
+- **Projectile aim.** With a bow being drawn, a charged crossbow or a trident being thrown, it aims
+  where the shot will land: the arrow's drag and gravity are simulated to find the pitch, and the
+  target's movement during the flight is led too. (In testing, a husk 22 blocks away was hit with a
+  plain draw and release.)
+- **Targets.** Players (and hostile mobs with **Target mobs**) within **Range**, picked by
+  crosshair angle, distance or health, kept with **Sticky target** and switched no faster than
+  **Switch delay**. Skips **Friends** (a name list), teammates (scoreboard team or the same name
+  color), players missing from the tab list (**Ignore bots**: NPCs and the fake players some
+  anticheats spawn to catch aim helpers), creative players, optionally invisible or naked ones, and
+  anyone behind blocks unless **Through walls** is on.
+- **Activation.** **Weapons only** (sword, axe, mace, trident, or a ready bow/crossbow), **Only while
+  attacking**, and **Only while aiming**: it only helps while you're moving the mouse yourself, above
+  **Mouse threshold**. **Flick to release** lets go of a target when you whip the mouse away from
+  them. It pauses while eating, in menus and in Freecam.
+- **Showing it.** **Show FOV** draws the cone around your crosshair. With Better visuals: brackets
+  around the target, the point it's aiming at, a guide line from your crosshair, and a label with
+  their name, health, distance (and flight time for projectiles), pink while tracking and green
+  once your crosshair is on them.
 
 ### Damage estimates
 
@@ -220,9 +313,15 @@ cracks the seed by itself once it has enough. Nothing is sent to the server.
   normal or abandoned".
 - **Mineshafts.** Every chunk rolls a 1-in-250 chance for one, from the seed and the chunk's
   coordinates, and the game starts each with a room whose corner is exactly 2 blocks into the start
-  chunk: a flat band of cave air 3 high over 8 to 13 blocks each way. A room counts when that band is
-  there at the corner, on a mostly solid floor, with walls just outside its near sides and mineshaft
-  woodwork, rails or cobwebs around it. The client gets the blocks underground with every chunk, so
+  chunk: a flat band of cave air 3 high over 8 to 13 blocks each way, with a dome of air on top. A
+  room counts when that band is there at the corner, on a mostly solid floor, with walls just outside
+  its near sides, the dome open above its middle (a room a player dug has a flat ceiling there) and
+  mineshaft woodwork, rails or cobwebs around it. Every mineshaft has exactly one such room, so
+  several rooms in what looks like one huge network are separate mineshafts whose corridors ran into
+  each other (they sprawl up to about 10 chunks, so that's common). The room's width along x and z
+  (8 to 13 each) is rolled from the seed too, so it's measured and checked: a room that isn't really
+  a mineshaft's start has the wrong size 35 times in 36, and a real one adds about 5 bits. (Chunks
+  from before 1.18 rolled one more number first, so there only the mineshaft itself counts.) The client gets the blocks underground with every chunk, so
   you don't need to go down. Each is worth about as much as a village, they're everywhere, and the
   same rule placed them in chunks from 1.12 on. They only check seeds rather than narrow the low bits,
   so they need at least one temple, igloo, outpost, a few villages or the End pillars alongside.
@@ -244,8 +343,10 @@ cracks the seed by itself once it has enough. Nothing is sent to the server.
 - **Checked twice.** The result is re-checked against every recorded structure with the game's own
   structure placement code before it's reported.
 
-**Misread structures.** If no seed fits every structure, it looks for one that fits all but up to 3 of
-them (needs a few more structures than an exact fit), takes the first whose top bits match the
+**Misread structures.** If no seed fits every structure, it first allows up to 2 misread mineshafts
+(or other clues that only check a seed: buried treasure, an outpost's roll, how a first piece came
+out), which costs little, then looks for a seed that fits all but up to 3 of the structures (needs a
+few more structures than an exact fit), takes the first whose top bits match the
 hashed seed, and sets aside the structures that don't fit, saying which. Once the seed is known, a
 newly recorded structure that doesn't fit it is ignored straight away. If you already know a
 server's seed, enter it as **Known seed** instead.
@@ -262,9 +363,46 @@ the hashed seed settles whatever few candidates are left.
 **Why not dungeons.** Since 1.18, features like dungeons are placed with a different random
 generator (Xoroshiro) seeded from the full 64-bit seed, which can't be run backwards the way the
 structures' generator can, so a dungeon can only confirm a seed, not help find it. Dungeons in chunks
-generated before 1.18 would work, but that needs the version that generated them. It's a proof of concept for vanilla settings:
-servers that change structure salts (`spigot.yml`) or hide the hashed seed need more work. Actions in
-the dashboard: Crack now, Copy seed, Forget this server.
+generated before 1.18 would work, but that needs the version that generated them. Actions in the
+dashboard: Crack now, Copy seed, Forget this server.
+
+### Servers with their own structure salts
+
+Spigot and Paper let a server replace each structure type's salt (`seed-village`, `seed-desert`,
+`seed-igloo`, `seed-jungle`, `seed-swamp`, `seed-outpost`... in `spigot.yml`, plus Paper's
+`seed-buriedtreasure` and `seed-mineshaft`), a common way to protect a seed. Then where each type's
+structures land only says something about *seed + that type's salt*, so types don't agree with each
+other and nothing fits the game's own settings. With **Custom structure salts** on (the default), the
+cracker then tries again with each type on its own unknown salt (`seed/SaltSolver`):
+
+- **Anchors.** Those settings never touch the End pillars, how a structure's first piece came out
+  (the rotation of an igloo, village or outpost and a village's centre), an outpost's extra roll, or
+  a mineshaft's room size (or, unless `seed-mineshaft` is set, where mineshafts are). Those tie the
+  structures to the seed itself.
+- **Per type.** Each type with enough finds is cracked on its own as *seed + salt*.
+- **Listing seeds.** The End pillars fix 16 of the seed's low 32 bits. With them and one cracked type,
+  each pillar-allowed low half gives exactly one seed (about 65,000 to check). With the pillars alone
+  it's about 4 billion, checked in 15–25 seconds. The anchors drop almost all of them, and the
+  server's hashed seed picks the full seed from what's left, as usual.
+- **Salts.** With the seed known, each type's salt follows from its finds (about 4–5 of a type pin it
+  down), and is worked out again as more are found. Chat lists which types have custom salts and the
+  setting each comes from, whether mineshafts have their own salt, and whether the hashed seed looks
+  fake.
+- **Predictions.** Predicted structures on the map use the salts found. Types whose salt isn't known
+  yet aren't predicted (strongholds are, they don't use a salt).
+
+**What it takes.** The End pillars are effectively required. A type's own positions barely pin down
+the top 13 or so bits of its *seed + salt* (pyramids, huts, igloos and outposts pick their spot with
+`nextInt(24)`, villages with `nextInt(26)`, and values 3·2^35 or 13·2^35 apart place them almost
+identically), so even a dozen of one type leave dozens of possibilities, each worth 4 billion seeds
+without the pillars. Beyond the pillars, about 20 bits of anchors: 2 mineshafts with their room sizes,
+or a handful of villages, igloos and outposts. In testing, on a server whose datapack changed the
+salts of villages, pyramids, igloos, huts, jungle temples and outposts, the End pillars, 7 villages,
+an igloo, 2 outposts, a swamp hut and 3 mineshafts gave the exact seed and the village salt. The
+outpost salt followed after 3 more outposts. Offline it also found the seed with Paper's mineshaft
+salt changed (from the rooms' sizes).
+
+Servers whose terrain doesn't come from Minecraft's own generator can't be cracked this way.
 
 ## Map
 
@@ -342,6 +480,233 @@ rotation or packets changes, so the server sees you standing where you are.
 Nyx's silent rotations and movement-packet freezing were left out (they change what's sent), and
 the player is no longer pinned in place against knockback, which would put the client out of step
 with the server.
+
+## Better visuals
+
+Purely cosmetic extras drawn on top of what each module already shows. They never change what a
+module does, what it sends or when. Turn them all off with **Better visuals** on the dashboard's
+Client page, or one module at a time with its own **Better visuals** setting (in its Visuals
+group). Both are on by default.
+
+| Module | What it adds |
+| --- | --- |
+| Auto Safe Anchor, Anchor Aura | The step the sequence is on, colour-coded at the anchor (placing, charging with its four charges lit up, shielding, detonating), the shield block still to come, the blast radius with a ripple as it goes off, an arc to where it's aiming, and the opponent it's for with the damage the spot should do. |
+| Crystal Aura | Brackets on the locked spot, the crystal with points circling it, the blast radius, the obsidian it's placing, and the opponent with the damage to them and to you. |
+| Stash ESP | A shape for each kind of find: brackets and a ring over the lid of chests and other storage, a spinning cage around spawners, sparks circling ender chests and enchanting tables, a pulsing ring on shulkers, halos over villagers, rising embers over furnaces. Beams and labels over each base or stash it marked. |
+| Player Blocks | The closest placed blocks glow softly instead of a flat fill. |
+| Aim Assist | Brackets around the target, the point it's aiming at, a guide line from your crosshair and a label with name, health and distance (and a projectile's flight time); pink while tracking, green on target. |
+| Old Chunks | Posts at the corners of nearby old chunks, with a slow sweep across them. |
+| Logout Spots | A ghost of the player where they logged out, with a halo. |
+| Light Finder | Lights glow with a soft halo, marked areas get a beam and a label with what was found, and new lights pulse. |
+| Activity Radar | Events ripple out as they happen, busy machines pulse, and bearings to global events are drawn as long rays. |
+| Player ESP | A ring under each player that shows their health, and a gold burst when someone pops a totem. |
+| Freecam | While the camera is out: a halo over your body, brackets around it and a line back to it. |
+| Map | A beam and a label over each structure found nearby. |
+| Seed Cracker | The start chunk of each structure it recorded nearby, outlined with what it is, and a label on each End pillar with what it read. |
+
+## Light Finder
+
+Light is one of the clearest signs of a player: almost nothing underground gives off light on its own, and
+nobody digs a tunnel or a bunker without lighting it.
+
+- **Lights.** Every light-giving block in the chunks you have loaded is sorted into natural or
+  player-made. Natural: lava, fire, magma, glow lichen, glow berries, sea pickles, amethyst, sculk and
+  the like; glowstone, shroomlight and lanterns in the Nether; End rods in the End; the wall torches
+  mineshafts hang on their support beams. Lights natural structures also have (torches, lanterns,
+  campfires, candles, sea lanterns, copper bulbs, End rods) are excused near villages, strongholds,
+  trial chambers, ancient cities, bastions, End cities, monuments, outposts and mansions, recognised by
+  their give-away blocks, illagers or the Map module's structure marks. Glowstone, froglights, jack
+  o'lanterns and redstone lamps never generate in one, so they always count.
+- **Light levels.** The client already has the block light of every loaded chunk. Air that's
+  underground or under a roof and lit at least to **Min light** is counted unless something natural (or
+  excused) explains it: light drops by one per block, so a source of brightness e only explains a spot
+  lit to L within e − L blocks. A chunk is only judged once its neighbours have been read too, since
+  light crosses chunk borders. A large unexplained lit volume is a base or a tunnel network even when
+  the lights themselves are few or hidden.
+- **What stands out.** Lit furnaces, smokers and blast furnaces (they go out on their own, so someone
+  was smelting), beacons, conduits, lit nether portals, charged respawn anchors and enchanting tables
+  count for more, and any light above the Nether roof is flagged on its own.
+- **Live.** When the server tells you a light was placed (or a furnace lit) more than a few blocks from
+  you, you get an alert, and the light pulses with a label for a minute: someone is working there right
+  now, often out of sight underground.
+- **Marked and alerted.** Chunks with enough lights (**Min lights per chunk**, beacons and furnaces
+  counting for several) or enough unexplained lit space (**Min lit blocks per chunk**) are marked: the
+  lights get outlines in their kind's color and the lit space is shaded. Neighbouring marked chunks form
+  an area; a big enough one ("Lit area", "Active base" with a lit furnace, "Nether roof base") is
+  alerted, written to `erebus/finds.txt` and marked on the map like Stash ESP's finds.
+- **Filters.** Each kind of light can be turned off, and **Ignore near spawn** and **Ignore highways**
+  skip the places on old anarchy servers where everything is player-made or travellers light the way.
+
+In testing: a sealed room underground at y 9 with six torches and a lit furnace was found as an
+"Active base" (7 lights, 171 lit blocks) from 16 blocks away through the rock, while the lava caves and
+the mineshaft around it, the spawn area with a trial chamber under it and a desert village at night
+weren't flagged; a glowstone block placed 18 blocks away raised a live alert, a torch placed in the
+village didn't.
+
+## Activity Radar
+
+The server tells your client about a lot of what happens around you, with exact coordinates and
+whether or not there's rock in the way. Activity Radar listens and puts it on screen:
+
+- **Within 64 blocks** (level and block events): dispensers and droppers firing, crafters, pistons,
+  note blocks and bells, spawners spawning (a player is within their range), chests, ender chests and
+  shulker boxes opening, anvils, grindstones and smithing tables being used, End portal frames
+  filled, and blocks being broken (with what was broken; leaves, crops and the like left out).
+- **Anywhere you have loaded** (block changes, your whole render distance): redstone switching
+  (powered rails, repeaters, comparators, lamps, observers, hoppers, dropper triggers, redstone wire),
+  doors, trapdoors, gates and barrels opening, levers and buttons, and blocks being placed that the
+  world doesn't place on its own (lava meeting water is left out). Daylight sensors, sculk and
+  redstone ore, which switch by themselves, are ignored.
+- **Minecarts** moving with nobody in them, as far as the server sends them.
+- **Across the dimension**: a wither spawning, the dragon dying or an End portal opening is told to
+  every player in the dimension, placed 32 blocks from them in its real direction. Each one is a
+  bearing; a source that repeats (a wither farm) is placed where bearings taken from different spots
+  cross, and marked on the map.
+
+Activity close together is grouped into a spot with a label: what's going on, how many events a
+second, how regular (a clock's frequency) and how deep underground. A spot where someone is at work
+(storage opened, a block broken or placed, a door, lever or workstation used) is alerted as
+"someone is there now"; a spot running faster than **Machine rate** is alerted as a machine. Anything
+within **Ignore near you** of you is your own doing and left out.
+
+**What mobs and the world do is left out**, so a spot means a person (or a machine someone built):
+
+- blocks broken by mobs: a sheep eating grass, zombies and vindicators breaking doors, the wither, a
+  ravager, silverfish coming out of stone, an arrow shattering a pot, a boat over a lily pad; and
+  blocks that break or grow by themselves (flowers, saplings, mushrooms, vines, berries, frogspawn,
+  sniffer eggs, snow and more, on top of leaves and crops);
+- doors, trapdoors and gates opened by villagers, illagers, piglins or zombies, or flung open by a wind
+  charge. Mobs are only sent to you so far out (less than your render distance on most servers), so
+  past the farthest one you've seen, a door only counts with a player next to it;
+- pressure plates and tripwires set off by a mob, an item or an arrow (and the lamps, doors and
+  dispensers they set off, like a jungle temple's arrow trap), and the plate's release;
+- wooden buttons and targets hit by arrows, levers and buttons hit by wind charges, lightning rods
+  struck by lightning, bells rung by villagers or arrows, chests opened by copper golems;
+- blocks an enderman puts down, an anvil or other falling block landing;
+- a resting minecart shoved by a mob: a cart has to keep rolling for 4 blocks before it counts;
+- a spawner spawning because of you: it needs a player within 16 blocks.
+
+In testing: an observer clock driving a dropper in a sealed room 56 blocks underground was alerted
+from 32 blocks away ("15 redstone, 2 dispenser, 1.7/s"); a door, a lever, a broken wall block and a
+placed block from 30 blocks away each raised "someone is there now"; a wither spawning 60 blocks
+away gave its direction, and a second one heard from another spot was placed at exactly where it
+spawned; a minecart on rails was followed along its track.
+Against the world: 16 lambs grazing a pen 18 blocks away ate 21 grass blocks in a minute and
+nothing was flagged; a door opened next to a villager, a door a wind charge flung open, a door opened
+next to a husk, a plate with an item or a husk on it (and the lamp it lit), a wooden button an arrow
+was shot into, a cart shoved across the floor and a falling anvil landing were all left out, while
+the same door, button and a broken block with nobody near were still flagged.
+
+What reaches you depends on the server: these are vanilla ranges, and plugins can trim them (a server
+can also turn global sound events off).
+
+## Player Blocks: what counts as natural
+
+Player Blocks flags two things: blocks the world never generates (concrete, shulker boxes, mineral
+blocks, redstone parts...) and building materials (planks, glass, terracotta, packed ice, snow
+blocks...) where nature wouldn't put them. To keep the second list honest it checks, for each block:
+
+- **The biome, and the biomes a few blocks around it.** Each block's biome is picked with some jitter
+  at biome borders, terracotta bands and snow run a little past them, and icebergs spill out of
+  frozen oceans onto the shore, so terracotta counts as natural within 8 blocks of a badlands biome
+  and ice within 16 of a cold one. Mossy cobblestone is natural in old-growth taiga (its boulders),
+  cobblestone touching lava or water is natural (they flowed together).
+- **Whether the chunk's surroundings have loaded.** The client reads a chunk it hasn't got as plains,
+  and a village's outer houses can be in view while its bell isn't, so building materials are only
+  judged in chunks with everything within 2 chunks loaded (at the edge of your render distance they
+  wait until you come closer).
+- **Natural structures, at the right height.** Villages, mineshafts (by their supports: fences two
+  high with planks across, which also finds badlands mineshafts at the surface), strongholds,
+  ancient cities (deepslate bricks and tiles together), trial chambers, temples, igloos, ruins,
+  bastions, End cities and mansions (by their illagers) excuse building materials around them, but
+  only within 24 blocks of the height they were found at: a base on the surface above a mineshaft is
+  still a base.
+- **Never-natural blocks that structures use anyway**, found by reading every structure the game
+  has: trial chambers' white and red concrete, ancient cities' redstone blocks, comparators, targets
+  and note blocks, mansions' diamond and lapis blocks, damaged anvils in mansions and trail ruins,
+  bastions' quartz and End cities' ender chests. Each is only excused near its own structure.
+
+In testing on a dedicated server, the badlands, eroded and wooded badlands (and a badlands
+mineshaft), frozen ocean icebergs, ice spikes, snowy slopes over a trial chamber and old-growth
+taiga showed nothing, where before they showed hundreds of terracotta blocks, packed ice and
+concrete; orange terracotta, packed ice and snow blocks placed in plains above a mineshaft were
+flagged.
+
+## Player ESP
+
+Every other player within range gets a box (or just its corners), a tracer and a name tag that stays
+sharp at any distance (drawn as HUD text). The tag can show health, distance, ping, what they hold
+(and whether there's a totem in their offhand), how many armor pieces they wear (and if one is about to
+break), totem pops this life and coordinates. Colors go by distance (red close, green far), health or
+their team color; names on the **Friends** list get their own color, and **Ignore bots** skips players
+missing from the tab list. Pops are counted from the event the server sends when a totem is used, and
+reset when the player dies. With Better visuals, a ring under each player shows their health and a gold
+burst marks a pop. Ported from Nyx; Nyx's on-screen player list is the existing Nearby players HUD
+element.
+
+## XP Optimizer
+
+Throws experience bottles for you and stops the moment the XP already in the air and on the ground
+will finish repairing your mending gear (armor you wear and what you hold), so no bottle is wasted.
+Every bottle is a real press of the use key; looking down is simulated mouse movement.
+
+- **Activation**: *Hold use* takes over while you hold right-click with bottles (looking down, by
+  default): it does the clicking and holds back the game's own repeat, and once your gear is covered
+  holding longer throws nothing more. *While enabled* (bind it to a key) picks the bottles from your
+  hotbar, looks straight down, throws until your gear is repaired, then puts your slot and view back
+  and turns itself off, with a message saying how many it threw.
+- **Click rhythm**: the click speed wanders between **Min CPS** and **Max CPS**, picking a new value
+  to drift towards every **Speed change** seconds, and every gap gets **Jitter** (Gaussian, in ms) on
+  top. **Max per tick** caps how many bottles go in one game tick.
+- **Stop when repaired** counts what's on its way two ways: the bottles and orbs it can see, and its
+  own tally of what it threw (7 XP a bottle on average) minus what's been absorbed since. The
+  orbs alone undercount, because the game merges orbs near each other and doesn't tell the client by
+  how many. **Extra bottles** throws a few more on purpose.
+- **Better visuals**: a repair bar under the crosshair with your gear's durability, the XP on its
+  way, how much is still needed and the current click speed.
+
+In testing, a diamond chestplate and leggings needing 360 XP took 52 bottles (of 64) at an average
+of 10.7 clicks a second with gaps from 33 to 190 ms, were fully repaired, and 4 XP ended up in the
+XP bar; slot and view went back to where they were.
+
+## Auto Totem
+
+Keeps a totem in your offhand, as you would by hand (ported from Nyx's Smarter AutoTotem):
+
+- **Real input only.** With a totem in the hotbar: its number key, your swap-hands key one tick later
+  (the slot change has to reach the server first, or it would swap what you held before), then back to
+  your slot. Otherwise: your inventory key, the cursor moved over a totem (eased, landing somewhere on
+  the slot rather than its exact centre), your swap-hands key on it, and the inventory key again, each
+  after its own short random pause. Keys go through the game's own key handler, so the inventory gets
+  them exactly as from the keyboard.
+- **Timing.** A new random reaction time for every refill (min to max), with part of your ping taken
+  off (your key press reaches the server that much later anyway), a separate shorter one right after a
+  pop, and no delay at all below **Instant below**.
+- **Smart mode** only swaps a totem in when it's needed: an empty offhand, low health, a pop, or danger.
+  Danger is an end crystal, a charged respawn anchor (outside the Nether) or a bed (outside the
+  Overworld) close enough to take most of your health by the game's own explosion maths, a fall that
+  could, or a player within 5 blocks coming down at you with a mace. Danger skips the delay and takes
+  the fastest way.
+- **Where from.** Inventory first keeps hotbar totems for emergencies; **Keep hotbar slot** keeps a spare
+  in a chosen slot, refilled while it's safe (nobody within 12 blocks, standing still), so the fast way
+  is ready when it matters.
+- **Pop alerts** say how many totems are left.
+
+## X-Ray
+
+Hides every block except the ones you want, through the chunk meshes (hidden blocks have nothing to
+draw and don't cover their neighbours; the ones shown are drawn at full brightness). Ported from Nyx.
+
+- **What shows.** The ores of the dimension you're in (each kind can be turned off), anything on the
+  **Extra blocks** list (ids, comma separated), storage, blocks only players place (Player Blocks' list)
+  and optionally bedrock. Water and lava can be hidden too, and Fullbright comes on with it.
+- **Anti-xray awareness.** Servers running anti-xray (Paper's engine modes) send fake ores in place of
+  buried stone and real ores only where they touch air. X-Ray checks each ore around you: ones with no
+  air, water or lava next to them are dimmed (probably fake there), and exposed ones get an outline in
+  their color (real even with anti-xray, and reachable from a cave). The module list shows how many of
+  each are around.
+- **Empty areas.** Caves, tunnels, lava and water underground are shaded so their shape shows through
+  the rock (below **Max height** in the Overworld).
 
 ## Font
 

@@ -84,7 +84,7 @@ final class Targets {
     static void singleplayerHint(dev.erebus.client.module.Module m, boolean mobs) {
         Minecraft mc = Minecraft.getInstance();
         if (mobs || mc.getSingleplayerServer() == null || mc.level == null || mc.level.players().size() > 1) return;
-        dev.erebus.client.util.Chat.info(m.name + " only goes for other players, and there are none in singleplayer. Turn on Target mobs in its "
+        dev.erebus.client.util.Chat.info(m.name, "Only goes for other players, and there are none in singleplayer. Turn on Target mobs in its "
                 + "settings to try it on hostile mobs (a zombie works well as a dummy).");
     }
 }

@@ -153,6 +153,7 @@ public final class CrystalAura extends Module {
     // ---- the locked spot ----
     private Stage stage = Stage.IDLE;
     private LivingEntity target;
+    private float visualDealt, visualTaken;
     private BlockPos base;
     private int ticks;
     private int stageTicks;
@@ -213,7 +214,8 @@ public final class CrystalAura extends Module {
                 + "so it never fires while you build or eat.", true));
         pauseOnUse = add(new BoolSetting("Pause on use key", "Pause while you hold the use key yourself (placing, eating, blocking).", true));
         yieldToMouse = add(new BoolSetting("Yield to mouse", "If you flick the mouse, let go of the spot and give the camera back for a moment.", true));
-        yieldAmount = add(new NumberSetting("Yield above", "How far (degrees) you have to move the mouse within a moment for it to yield.", 25, 3, 90, 1)
+        yieldAmount = add(new NumberSetting("Yield above", "How far (degrees) you have to flick the mouse away from where it's aiming, within a "
+                + "moment, for it to yield. Following the opponent doesn't count, and right after a hit it takes half as much again.", 25, 3, 90, 1)
                 .visibleWhen(yieldToMouse::get));
         yieldPause = add(new NumberSetting("Yield pause", "Ticks to stay out of the way after yielding.", 6, 0, 40, 1).visibleWhen(yieldToMouse::get));
 
@@ -297,7 +299,8 @@ public final class CrystalAura extends Module {
         aimPoint = add(new ModeSetting("Aim point", "Where on the block or crystal to aim. Nearest: the smallest turn. Center: the middle. "
                 + "Random: anywhere that works.", "Nearest", "Nearest", "Center", "Random"));
         edgeMargin = add(new NumberSetting("Edge margin", "How far from a face's edges the aim point stays, as a fraction of the face.", 0.15, 0.05, 0.45, 0.01));
-        holdCamera = add(new BoolSetting("Hold camera", "Ignore your own mouse while it's turning. Off: your movement adds to the turn.", false));
+        holdCamera = add(new BoolSetting("Hold camera", "Ignore your own mouse while it's turning. Off: your movement adds to the turn (except "
+                + "right after a hit, when the turn always holds it so the click lands; flicking away still lets go).", false));
         lookBack = add(new BoolSetting("Look back", "Turn back to where you were looking once the fight pauses. Moving the mouse cancels it.", false));
         lookBackAfter = add(new NumberSetting("Look back after", "Ticks with no crystal before turning back.", 10, 0, 60, 1).visibleWhen(lookBack::get));
         lookBackSpeed = add(new NumberSetting("Look back speed", "Fastest the turn back goes, in degrees per second.", 600, 120, 2400, 30).visibleWhen(lookBack::get));
@@ -312,6 +315,9 @@ public final class CrystalAura extends Module {
         showTarget = add(new BoolSetting("Show target", "Outline the spot it's working on.", true));
         baseColor = add(new ColorSetting("Crystal color", 0xFFB46BFF).visibleWhen(showTarget::get));
         obsidianColor = add(new ColorSetting("Obsidian color", 0xFF6B8CFF).visibleWhen(showTarget::get));
+        addVisuals("Shows the crystal spot it's locked on (with the crystal's reach and blast radius), the obsidian it's placing, the "
+                + "opponent it's for and the damage the spot should do.");
+        addTagSize();
 
         if (!hooked) {
             hooked = true;
@@ -388,7 +394,7 @@ public final class CrystalAura extends Module {
             idle();
             return;
         }
-        if (yieldToMouse.get() && !MouseSim.returning() && MouseSim.userMoved(yieldAmount.get(), 150)) {
+        if (yieldToMouse.get() && !MouseSim.returning() && MouseSim.userMovedAway(yieldThreshold(), 150)) {
             yieldTicks = yieldPause.intValue();
             if (MouseSim.active()) MouseSim.stop();
             unlock(0);
@@ -406,6 +412,14 @@ public final class CrystalAura extends Module {
         }
         if (stage == Stage.OBSIDIAN) obsidianStage();
         else spam();
+    }
+
+    /**
+     * How far (net degrees within 150 ms) the player has to flick away for it to let go: half as much again for a
+     * moment after a hit, when the player is still following the opponent they knocked up and the crystals matter most.
+     */
+    private double yieldThreshold() {
+        return yieldAmount.get() * (knockup(lastHit) ? 1.5 : 1);
     }
 
     private void trackStillness() {
@@ -449,7 +463,8 @@ public final class CrystalAura extends Module {
             info = why;
             return;
         }
-        if (yieldToMouse.get() && MouseSim.userMoved(yieldAmount.get(), 150) && !MouseSim.returning()) return; // mid-flick: don't start now
+        // mid-flick: don't start now (but right after a hit, starting now is the point)
+        if (yieldToMouse.get() && !knockup(lastHit) && MouseSim.userMoved(yieldThreshold(), 150) && !MouseSim.returning()) return;
         if (--searchWait > 0) return;
         searchWait = searchInterval.intValue();
         if (!haveCrystals()) {
@@ -505,6 +520,8 @@ public final class CrystalAura extends Module {
     // =====================================================================================================
 
     private void lockOn(Spot spot) {
+        visualDealt = spot.dealt();
+        visualTaken = spot.taken();
         target = pendingTarget;
         base = spot.base();
         lastBase = base;
@@ -974,7 +991,10 @@ public final class CrystalAura extends Module {
                 aimKey = key;
             }
             if (aim == null) return onIt ? Action.AIMING : Action.REFUSED;
-            MouseSim.aim(aim.yaw(), aim.pitch(), profile(), holdCamera.get());
+            // right after a hit the turn holds the camera whatever the setting: the player is still following the opponent,
+            // and that movement added on top would keep the crosshair from ever settling on the spot (a flick away still
+            // lets go, it's measured before the hold)
+            MouseSim.aim(aim.yaw(), aim.pitch(), profile(), holdCamera.get() || knockup(lastHit));
             return Action.AIMING;
         }
         if (stillTicks < settleTicks.intValue()) { // just arrived: hold it here until the server has this view
@@ -1135,9 +1155,58 @@ public final class CrystalAura extends Module {
 
     @Override
     public void onRenderWorld(WorldRender ctx) {
-        if (!showTarget.get() || stage == Stage.IDLE || base == null) return;
+        if (stage == Stage.IDLE || base == null) return;
+        if (visuals()) drawVisuals(ctx);
+        if (!showTarget.get()) return;
         int c = stage == Stage.OBSIDIAN ? obsidianColor.get() : baseColor.get();
         Gizmos.cuboid(new AABB(base), GizmoStyle.strokeAndFill(c, 2f, (0x30 << 24) | (c & 0xFFFFFF))).setAlwaysOnTop();
+    }
+
+    /** Where the crystal sits on the locked spot (its hitbox is 2 wide and 2 high, standing on the block). */
+    private net.minecraft.world.phys.Vec3 crystalCenter() {
+        return new net.minecraft.world.phys.Vec3(base.getX() + 0.5, base.getY() + 2, base.getZ() + 0.5);
+    }
+
+    /** The cosmetic extras: the spot, the crystal on it, its blast radius, the obsidian it's placing and the opponent. */
+    private void drawVisuals(WorldRender ctx) {
+        if (stage == Stage.OBSIDIAN) {
+            dev.erebus.client.render.Visuals.glowBox(new AABB(base), 0xFF818CF8, 1.6f, 0x70);
+            dev.erebus.client.render.Visuals.brackets(new AABB(base).inflate(0.06), 0xFFA5B4FC, 2.2f);
+            dev.erebus.client.render.Visuals.arc(ctx.tracerStart(), net.minecraft.world.phys.Vec3.atCenterOf(base), 0.3, 0xCCA5B4FC, 1.5f);
+            return;
+        }
+        int c = 0xFFC084FC;
+        net.minecraft.world.phys.Vec3 cc = crystalCenter();
+        dev.erebus.client.render.Visuals.brackets(new AABB(base).inflate(0.06), c, 2.2f);
+        dev.erebus.client.render.Visuals.brackets(new AABB(cc.x - 1, cc.y - 1, cc.z - 1, cc.x + 1, cc.y + 1, cc.z + 1), 0xAAE9D5FF, 1.6f);
+        // a slow spin around the crystal, and its blast (power 6)
+        double a = dev.erebus.client.render.Visuals.time() * 2.4;
+        for (int i = 0; i < 3; i++) {
+            double ang = a + i * Math.PI * 2 / 3;
+            Gizmos.point(cc.add(Math.cos(ang) * 0.9, Math.sin(a * 1.7 + i) * 0.35, Math.sin(ang) * 0.9), c, 7f).setAlwaysOnTop();
+        }
+        dev.erebus.client.render.Visuals.ring(cc.add(0, -0.95, 0), 0.9, dev.erebus.client.render.Visuals.fade(c, 0.8f), 1.5f, 24);
+        dev.erebus.client.render.Visuals.sphere(cc, 6, dev.erebus.client.render.Visuals.alpha(0xFFFF5A3C, 0x50), 1.1f);
+        dev.erebus.client.render.Visuals.ripple(cc.add(0, -0.95, 0), 6, 0xFFFF5A3C, 1.6f, 1.2, 0);
+        if (target != null && target.isAlive()) {
+            net.minecraft.world.phys.Vec3 lerp = target.getPosition(ctx.partialTick()).subtract(target.position());
+            AABB tb = target.getBoundingBox().move(lerp.x, lerp.y, lerp.z);
+            dev.erebus.client.render.Visuals.brackets(tb.inflate(0.12), 0xFFFF4D6D, 2.2f);
+            dev.erebus.client.render.Visuals.arc(cc, tb.getCenter(), 0.8, 0xFFFF4D6D, 1.5f);
+        }
+    }
+
+    @Override
+    public void onRenderOverlay(dev.erebus.client.gui.Ui ui) {
+        if (!visuals() || stage == Stage.IDLE || base == null || mc.options.hideGui) return;
+        if (stage == Stage.OBSIDIAN) {
+            dev.erebus.client.render.Visuals.label(ui, net.minecraft.world.phys.Vec3.atCenterOf(base).add(0, 0.9, 0),
+                    dev.erebus.client.render.font.Icon.PLUS, "Obsidian", "for a better spot", 0xFFA5B4FC);
+            return;
+        }
+        String dmg = String.format(java.util.Locale.ROOT, "%.1f to them \u00b7 %.1f to you", visualDealt, visualTaken);
+        dev.erebus.client.render.Visuals.label(ui, crystalCenter().add(0, 1.1, 0), dev.erebus.client.render.font.Icon.TARGET,
+                target != null ? target.getName().getString() : "Crystal", dmg, 0xFFC084FC);
     }
 
     @Override

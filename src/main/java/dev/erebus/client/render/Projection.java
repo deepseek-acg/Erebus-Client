@@ -14,6 +14,7 @@ public final class Projection {
     private static final Matrix4f VIEW_PROJ = new Matrix4f();
     private static Vec3 camera = Vec3.ZERO;
     private static boolean valid;
+    private static float lastDistance;
 
     private Projection() {
     }
@@ -28,6 +29,7 @@ public final class Projection {
     /** Screen position in GUI units, or null when the point is behind the camera. */
     public static float[] toScreen(Vec3 world) {
         if (!valid) return null;
+        lastDistance = (float) world.distanceTo(camera);
         Vector4f v = new Vector4f((float) (world.x - camera.x), (float) (world.y - camera.y), (float) (world.z - camera.z), 1f);
         VIEW_PROJ.transform(v);
         if (v.w <= 0.05f) return null;
@@ -36,6 +38,11 @@ public final class Projection {
         float sx = (nx * 0.5f + 0.5f) * window.getGuiScaledWidth();
         float sy = (1f - (ny * 0.5f + 0.5f)) * window.getGuiScaledHeight();
         return new float[]{sx, sy};
+    }
+
+    /** How far from the camera the point of the last {@link #toScreen} call was (world labels shrink with it). */
+    public static float lastDistance() {
+        return lastDistance;
     }
 
     public static Vec3 camera() {

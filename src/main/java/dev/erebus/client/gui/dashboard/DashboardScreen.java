@@ -42,6 +42,9 @@ public final class DashboardScreen extends UiScreen {
     public static final int LIST = 182;
 
     private static String lastPageId = "combat";
+    /** Where everything was when the menu was last closed (this session): scroll positions, and what each page had picked. */
+    private static final java.util.Map<String, Float> SCROLLS = new java.util.HashMap<>();
+    static final java.util.Map<String, String> PICKED = new java.util.HashMap<>();
 
     private final List<Page> modulePages = new ArrayList<>();
     private final List<Page> clientPages = new ArrayList<>();
@@ -49,11 +52,14 @@ public final class DashboardScreen extends UiScreen {
     private Page current;
     private String search = "";
     private TextField searchField;
-    private final Anim open = new Anim(0f, 16f);
+    /** 0 closed, 1 open; a spring, so the window lands with a little give. */
+    private final dev.erebus.client.util.Spring open = new dev.erebus.client.util.Spring(0f, 300f, 26f);
+    private boolean closing;
 
     public DashboardScreen() {
         super(Component.translatable("erebus.screen.dashboard"));
         for (Category c : Category.values()) modulePages.add(new ModulesPage(this, c));
+        clientPages.add(new MessagesPage(this));
         clientPages.add(new HudPage(this));
         clientPages.add(new ThemePage(this));
         clientPages.add(new ClientPage(this));
@@ -91,6 +97,11 @@ public final class DashboardScreen extends UiScreen {
     }
 
     @Override
+    protected java.util.Map<String, Float> keptScrolls() {
+        return SCROLLS;
+    }
+
+    @Override
     protected int designWidth() {
         return W;
     }
@@ -107,7 +118,17 @@ public final class DashboardScreen extends UiScreen {
 
     @Override
     protected float frameScale() {
-        return scale * (0.965f + 0.035f * open.get());
+        return scale * (0.94f + 0.06f * open.get());
+    }
+
+    @Override
+    protected float frameAlpha() {
+        return Math.min(1f, open.get() * 1.25f);
+    }
+
+    @Override
+    protected float frameOffsetY() {
+        return (1f - Math.min(1f, open.get())) * 10f;
     }
 
     // ------------------------------------------------------------------ build
@@ -123,7 +144,20 @@ public final class DashboardScreen extends UiScreen {
                 }));
         root.add(new Button(W - 26, 6, 18, 18, "", Button.Style.GHOST, this::onClose).icon(dev.erebus.client.render.font.Icon.CLOSE));
 
-        // sidebar
+        // sidebar, with the highlight gliding to the page you pick
+        root.add(new Drawable(6, TOP, SIDE - 12, H - TOP, (ui, self, mx, my) -> {
+            dev.erebus.client.util.Spring at = ui.spring("side", activeY), shown = ui.spring("side-on", search.isBlank() ? 1f : 0f);
+            at.target(activeY);
+            shown.target(search.isBlank() ? 1f : 0f);
+            float y = at.update(ui.dt), a = Math.max(0f, Math.min(1f, shown.update(ui.dt)));
+            if (a < 0.01f) return;
+            float before = ui.alpha;
+            ui.alpha *= a;
+            int r = ui.smallRadius();
+            ui.round(self.x, Math.round(y), self.width, 18, r, ui.theme.selected());
+            ui.rect(self.x, Math.round(y) + 3, 2, 12, ui.theme.accent());
+            ui.alpha = before;
+        }));
         int sy = TOP + 8;
         sy = sideLabel("Modules", sy);
         for (Page p : modulePages) sy = sideItem(p, sy);
@@ -140,21 +174,25 @@ public final class DashboardScreen extends UiScreen {
         page.build(content, SIDE, TOP, W - SIDE, H - TOP);
     }
 
-    private final Anim pageIn = new Anim(1f, 14f);
+    private final Anim pageIn = new Anim(1f, 11f);
 
-    /** Page content, sliding in a few pixels when the page changes. */
+    /** Page content, fading in and sliding over a few pixels when the page changes. */
     private final class SlideIn extends Container {
         @Override
         public void render(Ui ui, int mx, int my) {
-            float off = (1f - pageIn.update(ui.dt)) * 10f;
+            float p = pageIn.update(ui.dt);
+            float off = (1f - p) * 14f;
             if (off < 0.05f) {
                 super.render(ui, mx, my);
                 return;
             }
+            float before = ui.alpha;
+            ui.alpha *= p * p * (3 - 2 * p);
             ui.g.pose().pushMatrix();
             ui.g.pose().translate(off, 0);
             super.render(ui, mx - Math.round(off), my);
             ui.g.pose().popMatrix();
+            ui.alpha = before;
         }
     }
 
@@ -171,7 +209,11 @@ public final class DashboardScreen extends UiScreen {
         return y + 14;
     }
 
+    /** Where the current page's sidebar item is (the highlight glides there). */
+    private int activeY = TOP + 22;
+
     private int sideItem(Page page, int y) {
+        if (page == current) activeY = y;
         root.add(new SideItem(6, y, SIDE - 12, 18, page));
         return y + 19;
     }
@@ -193,10 +235,7 @@ public final class DashboardScreen extends UiScreen {
             float h = hover.update(ui.dt);
             boolean active = search.isBlank() && current == page;
             int r = ui.smallRadius();
-            if (active) {
-                ui.round(x, y, width, height, r, ui.theme.selected());
-                ui.rect(x, y + 3, 2, height - 6, ui.theme.accent());
-            } else if (h > 0.01f) {
+            if (!active && h > 0.01f) { // the active one's highlight is drawn gliding, under the items
                 ui.round(x, y, width, height, r, Colors.mulAlpha(ui.theme.hover(), h));
             }
             int color = active ? ui.theme.text() : Colors.lerp(ui.theme.dim(), ui.theme.text(), h * 0.7f);
@@ -303,7 +342,7 @@ public final class DashboardScreen extends UiScreen {
                 // another layer already blurred this frame
             }
         }
-        float a = open.get();
+        float a = Math.max(0f, Math.min(1f, open.get()));
         g.fillGradient(0, 0, width, height, Colors.withAlpha(0x000000, Math.round(0x50 * a)), Colors.withAlpha(0x000000, Math.round(0x78 * a)));
     }
 
@@ -311,19 +350,34 @@ public final class DashboardScreen extends UiScreen {
     public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
         open.update(ui.dt);
         super.render(g, mouseX, mouseY, delta);
+        if (closing && (open.get() < 0.03f || !Anim.Animations.enabled())) {
+            closing = false;
+            super.onClose();
+        }
+    }
+
+    @Override
+    public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean doubleClick) {
+        return closing || super.mouseClicked(event, doubleClick);
+    }
+
+    @Override
+    public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
+        if (closing) return true;
+        return super.keyPressed(event);
     }
 
     @Override
     protected void renderFrame(Ui ui, int mx, int my) {
         Theme t = ui.theme;
         int r = t.radius;
-        if (t.shadow) Render2D.shadow(ui.g, 0, 0, W, H, r, 10, 0xA0000000);
-        Render2D.roundRect(ui.g, 0, 0, W, H, r, t.background());
-        Render2D.roundRect(ui.g, 0, 0, W, TOP, r, t.header(), true, false);
+        if (t.shadow) Render2D.shadow(ui.g, 0, 0, W, H, r, 10, ui.fade(0xA0000000));
+        Render2D.roundRect(ui.g, 0, 0, W, H, r, ui.fade(t.background()));
+        Render2D.roundRect(ui.g, 0, 0, W, TOP, r, ui.fade(t.header()), true, false);
         ui.rect(0, TOP, W, 1, t.divider());
         ui.rect(SIDE, TOP + 1, 1, H - TOP - 1, t.divider());
         ui.rect(SIDE + LIST, TOP + 1, 1, H - TOP - 1, t.divider());
-        Render2D.roundRectBorder(ui.g, 0, 0, W, H, r, t.border());
+        Render2D.roundRectBorder(ui.g, 0, 0, W, H, r, ui.fade(t.border()));
 
         // brand
         int by = Ui.centerY(0, TOP);
@@ -366,9 +420,16 @@ public final class DashboardScreen extends UiScreen {
         return false;
     }
 
+    /** Closing fades and shrinks the window away first (the game gets your mouse back once it's gone). */
     @Override
     public void onClose() {
+        if (closing) return;
         Erebus.config().save();
-        super.onClose();
+        if (!Anim.Animations.enabled()) {
+            super.onClose();
+            return;
+        }
+        closing = true;
+        open.target(0f);
     }
 }

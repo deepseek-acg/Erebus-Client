@@ -17,7 +17,8 @@ public final class SeedData {
 
     /**
      * A recorded structure. {@code rejected}: it doesn't fit the seed (most likely misread), so it's left out.
-     * {@code piece} and {@code rotation}: how its first piece came out, if known (null in older files).
+     * {@code piece} and {@code rotation}: how its first piece came out, if known (null in older files): a
+     * village's town centre template, or a mineshaft's start room size as "room 10x12" (-1 where unmeasured).
      */
     public record Entry(String kind, int chunkX, int chunkZ, int x, int y, int z, boolean rejected, String piece, Integer rotation) {
         public Entry withRejected(boolean r) {
@@ -49,6 +50,15 @@ public final class SeedData {
     public int[] pillars;
     /** The pillar shuffle keys (0-65535) that fit {@link #pillars}, sorted; null if none were seen. */
     public int[] pillarKeys;
+    /**
+     * True once the seed turned out to need each kind of structure on its own salt (a Spigot or Paper server with
+     * its {@code seed-village}, {@code seed-desert}... settings changed). Null if not known to.
+     */
+    public Boolean customSalts;
+    /** The salts worked out, by structure kind ({@link StructureScanner.Kind} name); kinds not in it aren't known yet. */
+    public java.util.Map<String, Integer> salts;
+    /** Whether mineshafts have their own salt too (Paper's {@code seed-mineshaft}): only their room sizes fit the seed. */
+    public boolean shaftSalted;
 
     private transient String key;
 
@@ -105,6 +115,59 @@ public final class SeedData {
             if (e.kind().equals(kind.name()) && e.chunkX() == chunkX && e.chunkZ() == chunkZ) return true;
         }
         return false;
+    }
+
+    public boolean salted() {
+        return Boolean.TRUE.equals(customSalts);
+    }
+
+    /**
+     * What a recorded structure says about the seed, with this server's salts: on a server with its own salts, a
+     * structure of a kind whose salt isn't known yet only counts for what doesn't depend on it (how its first piece
+     * came out, an outpost's extra roll), and mineshafts and buried treasure only where their salt is the game's own.
+     */
+    public List<SeedSolver.Clue> fitClues(Entry e) {
+        if (!salted()) return e.clues();
+        StructureScanner.Kind k = e.kindOrNull();
+        if (k == null || k == StructureScanner.Kind.BURIED_TREASURE) return List.of();
+        if (k == StructureScanner.Kind.MINESHAFT && shaftSalted) return List.of();
+        Integer salt = salts == null ? null : salts.get(k.name());
+        List<SeedSolver.Clue> out = new ArrayList<>();
+        for (SeedSolver.Clue c : e.clues()) {
+            if (c instanceof SeedSolver.Spread s) {
+                if (salt != null) out.add(new SeedSolver.Spread(s.spacing(), s.separation(), salt, s.chunkX(), s.chunkZ()));
+            } else {
+                out.add(c);
+            }
+        }
+        return out;
+    }
+
+    /** For {@link SaltSolver}: what doesn't depend on salts (End pillars, first pieces, outpost rolls, mineshafts). */
+    public List<SeedSolver.Clue> saltAnchors() {
+        List<SeedSolver.Clue> out = new ArrayList<>();
+        for (SeedSolver.Clue c : clues(false)) {
+            if (!(c instanceof SeedSolver.Spread)) out.add(c);
+        }
+        return out;
+    }
+
+    /** For {@link SaltSolver}: the structures of each kind whose salt Spigot can change. */
+    public List<SaltSolver.Group> saltGroups() {
+        java.util.Map<StructureScanner.Kind, List<SeedSolver.Spread>> by = new java.util.EnumMap<>(StructureScanner.Kind.class);
+        for (Entry e : structures) {
+            StructureScanner.Kind k = e.kindOrNull();
+            if (k == null || e.rejected() || !k.spread()) continue;
+            for (SeedSolver.Clue c : e.clues()) {
+                if (c instanceof SeedSolver.Spread s) by.computeIfAbsent(k, x -> new ArrayList<>()).add(s);
+            }
+        }
+        List<SaltSolver.Group> out = new ArrayList<>();
+        for (var en : by.entrySet()) {
+            StructureScanner.Kind k = en.getKey();
+            out.add(new SaltSolver.Group(k.name(), k.spigotSetting, k.salt, en.getValue()));
+        }
+        return out;
     }
 
     public List<SeedSolver.Clue> clues(boolean withChances) {

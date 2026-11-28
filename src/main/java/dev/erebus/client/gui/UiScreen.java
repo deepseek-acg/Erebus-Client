@@ -67,11 +67,28 @@ public abstract class UiScreen extends net.minecraft.client.gui.screens.Screen {
         rebuild();
     }
 
+    /**
+     * Scroll positions this screen keeps after it's closed, so reopening it puts every panel back where it was (null =
+     * forget them).
+     */
+    protected java.util.Map<String, Float> keptScrolls() {
+        return null;
+    }
+
+    @Override
+    public void removed() {
+        java.util.Map<String, Float> kept = keptScrolls();
+        if (kept != null) collectScrolls(root, kept);
+        super.removed();
+    }
+
     public void rebuild() {
         Widget focused = ui.focused();
         if (focused != null) ui.focus(null);
         ui.release();
         java.util.Map<String, Float> scrolls = new java.util.HashMap<>();
+        boolean first = root.children().isEmpty();
+        if (first && keptScrolls() != null) scrolls.putAll(keptScrolls());
         collectScrolls(root, scrolls);
         root.clear();
         root.bounds(0, 0, designWidth(), designHeight());
@@ -98,7 +115,17 @@ public abstract class UiScreen extends net.minecraft.client.gui.screens.Screen {
     private void updateOrigin() {
         float s = frameScale();
         originX = (width - designWidth() * s) / 2f;
-        originY = (height - designHeight() * s) / 2f;
+        originY = (height - designHeight() * s) / 2f + frameOffsetY();
+    }
+
+    /** Opacity of the whole window (fading in and out). */
+    protected float frameAlpha() {
+        return 1f;
+    }
+
+    /** How far down the window is drawn from its place (sliding in and out), in screen units. */
+    protected float frameOffsetY() {
+        return 0f;
     }
 
     protected double toLocalX(double x) {
@@ -125,12 +152,17 @@ public abstract class UiScreen extends net.minecraft.client.gui.screens.Screen {
         g.pose().pushMatrix();
         g.pose().translate(originX, originY);
         g.pose().scale(frameScale(), frameScale());
-        renderFrame(ui, wmx, wmy);
-        root.render(ui, wmx, wmy);
-        renderOverlay(ui, wmx, wmy);
-        if (pop != null) pop.render(ui, mx, my);
-        String tip = ui.takeTooltip();
-        if (tip != null) drawTooltip(tip, mx, my);
+        ui.alpha = Math.max(0f, Math.min(1f, frameAlpha()));
+        try {
+            renderFrame(ui, wmx, wmy);
+            root.render(ui, wmx, wmy);
+            renderOverlay(ui, wmx, wmy);
+            if (pop != null) pop.render(ui, mx, my);
+            String tip = ui.takeTooltip();
+            if (tip != null) drawTooltip(tip, mx, my);
+        } finally {
+            ui.alpha = 1f;
+        }
         g.pose().popMatrix();
     }
 

@@ -81,6 +81,17 @@ public final class AnchorAura extends AnchorSequence {
     };
 
     private LivingEntity target;
+    private float visualDealt, visualTaken;
+
+    @Override
+    protected LivingEntity visualTarget() {
+        return target;
+    }
+
+    @Override
+    protected String visualDetail() {
+        return String.format(java.util.Locale.ROOT, "%.1f to them \u00b7 %.1f to you", visualDealt, visualTaken);
+    }
     private int rearm;
     private int searchWait;
 
@@ -205,6 +216,8 @@ public final class AnchorAura extends AnchorSequence {
             return;
         }
         if (beginAt(spot.pos(), null)) {
+            visualDealt = spot.dealt();
+            visualTaken = spot.taken();
             cooldowns.put(spot.pos(), System.currentTimeMillis() + (long) (spotCooldown.get() * 1000));
         }
     }

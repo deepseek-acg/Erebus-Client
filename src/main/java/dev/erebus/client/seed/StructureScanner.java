@@ -33,25 +33,37 @@ public final class StructureScanner {
     }
 
     public enum Kind {
-        DESERT_PYRAMID("Desert pyramid", 32, 8, 14357617),
-        JUNGLE_TEMPLE("Jungle temple", 32, 8, 14357619),
-        SWAMP_HUT("Swamp hut", 32, 8, 14357620),
-        IGLOO("Igloo", 32, 8, 14357618),
-        VILLAGE("Village", 34, 8, 10387312),
-        OUTPOST("Pillager outpost", 32, 8, 165745296),
-        MINESHAFT("Mineshaft", 1, 0, 0),
-        BURIED_TREASURE("Buried treasure", 1, 0, 0);
+        DESERT_PYRAMID("Desert pyramid", 32, 8, 14357617, "desert_pyramids", "seed-desert"),
+        JUNGLE_TEMPLE("Jungle temple", 32, 8, 14357619, "jungle_temples", "seed-jungle"),
+        SWAMP_HUT("Swamp hut", 32, 8, 14357620, "swamp_huts", "seed-swamp"),
+        IGLOO("Igloo", 32, 8, 14357618, "igloos", "seed-igloo"),
+        VILLAGE("Village", 34, 8, 10387312, "villages", "seed-village"),
+        OUTPOST("Pillager outpost", 32, 8, 165745296, "pillager_outposts", "seed-outpost"),
+        MINESHAFT("Mineshaft", 1, 0, 0, "mineshafts", "seed-mineshaft"),
+        BURIED_TREASURE("Buried treasure", 1, 0, 0, "buried_treasures", "seed-buriedtreasure");
 
         public final String label;
         public final int spacing;
         public final int separation;
+        /** The game's own salt. */
         public final int salt;
+        /** The structure set it belongs to. */
+        public final String set;
+        /** The setting in Spigot's (or Paper's) {@code spigot.yml} that replaces its salt. */
+        public final String spigotSetting;
 
-        Kind(String label, int spacing, int separation, int salt) {
+        Kind(String label, int spacing, int separation, int salt, String set, String spigotSetting) {
             this.label = label;
             this.spacing = spacing;
             this.separation = separation;
             this.salt = salt;
+            this.set = set;
+            this.spigotSetting = spigotSetting;
+        }
+
+        /** Whether its position comes from a random spread with a salt (Spigot can change it). */
+        public boolean spread() {
+            return spacing > 1;
         }
 
         /**
@@ -59,6 +71,10 @@ public final class StructureScanner {
          * rotation of an igloo, village or outpost, and which centre a village has.
          */
         public List<SeedSolver.Clue> clues(int chunkX, int chunkZ, String piece, Integer rotation) {
+            if (this == MINESHAFT && piece != null) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^room (-?\\d+)x(-?\\d+)$").matcher(piece);
+                if (m.find()) return List.of(new SeedSolver.Mineshaft(chunkX, chunkZ, Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2))));
+            }
             List<SeedSolver.Clue> out = new java.util.ArrayList<>(clues(chunkX, chunkZ));
             if (rotation != null && rotation >= 0 && rotation < 4 && (this == IGLOO || this == VILLAGE || this == OUTPOST)) {
                 int[] pool = this == VILLAGE && piece != null ? TemplateStarts.villageCentreSlots(piece) : null;

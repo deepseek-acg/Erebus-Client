@@ -26,6 +26,14 @@ public class ScrollPanel extends Container {
         return Math.max(0, contentBottom() + paddingBottom - (y + height));
     }
 
+    private long revealStart = -1;
+
+    /** Cascade the content in from the top, row by row (a newly picked module's settings). */
+    public ScrollPanel reveal() {
+        revealStart = System.currentTimeMillis();
+        return this;
+    }
+
     public ScrollPanel key(String key) {
         this.key = key;
         return this;
@@ -55,7 +63,11 @@ public class ScrollPanel extends Container {
         ui.g.enableScissor(x, y, x + width, y + height);
         ui.g.pose().pushMatrix();
         ui.g.pose().translate(0, -off);
-        super.render(ui, inside ? mx : -10000, inside ? my + off : -10000);
+        if (revealStart < 0 || !dev.erebus.client.util.Anim.Animations.enabled()) {
+            super.render(ui, inside ? mx : -10000, inside ? my + off : -10000);
+        } else {
+            renderRevealing(ui, inside ? mx : -10000, inside ? my + off : -10000, off);
+        }
         ui.g.pose().popMatrix();
         ui.g.disableScissor();
 
@@ -67,6 +79,28 @@ public class ScrollPanel extends Container {
             boolean hot = draggingBar || (inside && mx >= x + width - 6);
             ui.round(x + width - 4, barY, 3, barH, 1, Colors.withAlpha(ui.theme.text(), hot ? 0x70 : 0x30));
         }
+    }
+
+    /** Each row fades in and drops into place a little after the one above it. */
+    private void renderRevealing(Ui ui, int mx, int my, int off) {
+        long t = System.currentTimeMillis() - revealStart;
+        boolean done = true;
+        float before = ui.alpha;
+        for (Widget w : children) {
+            if (!w.visible) continue;
+            long delay = Math.min(220, Math.max(0, (w.y - y - off)) * 2L / 3);
+            float p = Math.max(0f, Math.min(1f, (t - delay) / 200f));
+            if (p < 1f) done = false;
+            if (p <= 0f) continue;
+            float e = 1f - (1f - p) * (1f - p) * (1f - p); // ease out
+            ui.alpha = before * e;
+            ui.g.pose().pushMatrix();
+            ui.g.pose().translate(0, (1f - e) * 6f);
+            w.render(ui, mx, my);
+            ui.g.pose().popMatrix();
+        }
+        ui.alpha = before;
+        if (done) revealStart = -1;
     }
 
     @Override

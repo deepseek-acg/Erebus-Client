@@ -64,6 +64,30 @@ public final class Freecam extends Module {
         maxDistance = add(new NumberSetting("Max distance", "How far the camera may go from your player in spectate mode, in blocks. Also "
                 + "limited by your render distance.", 128, 16, 512, 8).visibleWhen(() -> spectate.get() && !unlimited.get()));
         instance = this;
+        addVisuals("While the camera is out, marks your body: a halo over it, brackets around it and a line back to it.");
+        addTagSize();
+    }
+
+    @Override
+    public void onRenderWorld(dev.erebus.client.module.WorldRender ctx) {
+        if (!visuals() || active() == null) return;
+        // where your body is while the camera's away
+        Vec3 lerp = mc.player.getPosition(ctx.partialTick()).subtract(mc.player.position());
+        net.minecraft.world.phys.AABB b = mc.player.getBoundingBox().move(lerp.x, lerp.y, lerp.z);
+        int c = 0xFF7DD3FC;
+        dev.erebus.client.render.Visuals.brackets(b.inflate(0.1), c, 2f);
+        dev.erebus.client.render.Visuals.ring(new Vec3(b.getCenter().x, b.maxY + 0.25, b.getCenter().z), 0.32, c, 2f, 20);
+        dev.erebus.client.render.Visuals.ripple(new Vec3(b.getCenter().x, b.minY + 0.03, b.getCenter().z), 1.4, c, 1.5f, 2.0, 0);
+        dev.erebus.client.render.Visuals.arc(ctx.tracerStart(), b.getCenter(), 0.6, dev.erebus.client.render.Visuals.fade(c, 0.7f), 1.5f);
+    }
+
+    @Override
+    public void onRenderOverlay(dev.erebus.client.gui.Ui ui) {
+        if (!visuals() || active() == null || mc.options.hideGui) return;
+        Vec3 at = mc.player.position().add(0, mc.player.getBbHeight() + 0.9, 0);
+        Vec3 cam = mc.gameRenderer.getMainCamera().position();
+        dev.erebus.client.render.Visuals.label(ui, at, dev.erebus.client.render.font.Icon.PLAYER, "You", Math.round(cam.distanceTo(mc.player.position())) + "m away",
+                0xFF7DD3FC);
     }
 
     /** The running Freecam, or null when it's off. */
