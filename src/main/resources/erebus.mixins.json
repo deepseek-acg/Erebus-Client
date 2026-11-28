@@ -22,7 +22,8 @@
     "ContainerScreenAccess",
     "XRayBlockStateMixin",
     "XRayFluidMixin",
-    "BlockUpdateMixin"
+    "BlockUpdateMixin",
+    "ActivityPacketsMixin"
   ],
   "injectors": {
     "defaultRequire": 1

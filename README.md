@@ -70,6 +70,7 @@ obsidian, XP bottles), Armor, and Notifications.
 | Stash ESP | Basefinding | Outlines and tracers to storage and other base giveaways (chests, shulkers, ender chests, furnaces, villagers, item frames, chest minecarts...). Alerts when an area looks like a base or a stash, marks it on the map and logs it to `erebus/finds.txt`. |
 | Player Blocks | Basefinding | Highlights blocks the world never generates (concrete, shulkers, beacons, mineral blocks, redstone parts...) and building materials where they don't belong, skipping natural structures and biomes where they occur naturally. Lets Stash ESP tell bases from stashes. |
 | Light Finder | Basefinding | Finds light nature doesn't explain: player-made lights and lit space underground or indoors, ignoring lava, glow lichen, Nether glowstone, mineshaft torches and the lights of villages and other structures. Flags lit furnaces, beacons, portals and lights above the Nether roof, and alerts when a light is placed nearby. |
+| Activity Radar | Basefinding | Shows activity you can't see, with exact positions through rock: machines running (dispensers, pistons, redstone, spawners), chests opening, blocks broken or placed, doors and levers, minecarts rolling; triangulates withers, dragon deaths and End portals across the dimension. Alerts when someone is at work nearby. |
 | Old Chunks | Basefinding | Marks chunks generated before 1.18 (Overworld) or 1.16 (Nether): old trails lead to old bases. |
 | Freecam | Render | Flies the camera away from your player while your player stays put. Client-side only. Ported from Nyx. |
 | Fullbright | Render | Lights everything up, like a permanent Night Vision only you see. Client-side only. Ported from Nyx. |
@@ -450,6 +451,7 @@ group). Both are on by default.
 | Old Chunks | Posts at the corners of nearby old chunks, with a slow sweep across them. |
 | Logout Spots | A ghost of the player where they logged out, with a halo. |
 | Light Finder | Lights glow with a soft halo, marked areas get a beam and a label with what was found, and new lights pulse. |
+| Activity Radar | Events ripple out as they happen, busy machines pulse, and bearings to global events are drawn as long rays. |
 | Player ESP | A ring under each player that shows their health, and a gold burst when someone pops a totem. |
 | Freecam | While the camera is out: a halo over your body, brackets around it and a line back to it. |
 | Map | A beam and a label over each structure found nearby. |
@@ -493,6 +495,41 @@ In testing: a sealed room underground at y 9 with six torches and a lit furnace 
 the mineshaft around it, the spawn area with a trial chamber under it and a desert village at night
 weren't flagged; a glowstone block placed 18 blocks away raised a live alert, a torch placed in the
 village didn't.
+
+## Activity Radar
+
+The server tells your client about a lot of what happens around you, with exact coordinates and
+whether or not there's rock in the way. Activity Radar listens and puts it on screen:
+
+- **Within 64 blocks** (level and block events): dispensers and droppers firing, crafters, pistons,
+  note blocks and bells, spawners spawning (a player is within their range), chests, ender chests and
+  shulker boxes opening, anvils, grindstones and smithing tables being used, End portal frames
+  filled, and blocks being broken (with what was broken; leaves, crops and the like left out).
+- **Anywhere you have loaded** (block changes, your whole render distance): redstone switching
+  (powered rails, repeaters, comparators, lamps, observers, hoppers, dropper triggers, redstone wire),
+  doors, trapdoors, gates and barrels opening, levers and buttons, and blocks being placed that the
+  world doesn't place on its own (lava meeting water is left out). Daylight sensors, sculk and
+  redstone ore, which switch by themselves, are ignored.
+- **Minecarts** moving with nobody in them, as far as the server sends them.
+- **Across the dimension**: a wither spawning, the dragon dying or an End portal opening is told to
+  every player in the dimension, placed 32 blocks from them in its real direction. Each one is a
+  bearing; a source that repeats (a wither farm) is placed where bearings taken from different spots
+  cross, and marked on the map.
+
+Activity close together is grouped into a spot with a label: what's going on, how many events a
+second, how regular (a clock's frequency) and how deep underground. A spot where someone is at work
+(storage opened, a block broken or placed, a door, lever or workstation used) is alerted as
+"someone is there now"; a spot running faster than **Machine rate** is alerted as a machine. Anything
+within **Ignore near you** of you is your own doing and left out.
+
+In testing: an observer clock driving a dropper in a sealed room 56 blocks underground was alerted
+from 32 blocks away ("15 redstone, 2 dispenser, 1.7/s"); a door, a lever, a broken wall block and a
+placed block from 30 blocks away each raised "someone is there now"; a wither spawning 60 blocks
+away gave its direction, and a second one heard from another spot was placed at exactly where it
+spawned; a minecart on rails was followed along its track.
+
+What reaches you depends on the server: these are vanilla ranges, and plugins can trim them (a server
+can also turn global sound events off).
 
 ## Player ESP
 

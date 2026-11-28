@@ -2,6 +2,9 @@ Erebus for Minecraft **1.21.11** (Fabric).
 
 **Install:** put the `erebus-<version>.jar` below in your `mods` folder together with [Fabric API](https://modrinth.com/mod/fabric-api) for 1.21.11. Requires Fabric Loader 0.20+ and Java 21. Open the dashboard with Right Shift.
 
+### New in 0.7.2
+- **Activity Radar** (Basefinding): shows activity you can't see, with exact positions through rock. Within 64 blocks: dispensers and droppers firing, pistons, spawners spawning, chests and shulkers opening, workstations used, blocks broken. Across your whole render distance: redstone switching, doors, trapdoors, gates and barrels opening, levers and buttons, blocks placed. Minecarts rolling on their own. Activity is grouped into spots labelled with what's going on, how busy and how deep, with alerts when someone is at work nearby or a machine is running. Withers spawning, the dragon dying and End portals opening anywhere in the dimension give a direction; a repeating one (a wither farm) is located where directions from two places cross, and marked on the map.
+
 ### New in 0.7.1
 - **Light Finder** (Basefinding): finds light nature doesn't explain. Player-made lights (torches, lanterns, glowstone, froglights, lamps, campfires, lit furnaces, beacons, portals...) are told apart from natural ones (lava, glow lichen, glow berries, amethyst, sculk, Nether glowstone, End rods in the End, mineshaft torches) and from the lights of villages and other structures, and the client's own light data shows lit space underground or indoors that no natural source explains. Lit furnaces, beacons, portals and lights above the Nether roof stand out, areas are alerted and marked on the map, and a light placed near you raises a live alert: someone is there right now.
 
