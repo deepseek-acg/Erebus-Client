@@ -103,6 +103,10 @@ public final class ModulesPage extends Page {
             int bx = px;
             for (Module.Action a : m.actions()) {
                 int bw = dev.erebus.client.render.font.Text.width(a.label()) + 34;
+                if (bx > px && bx + bw > px + pw) { // no room left on this row: start the next
+                    bx = px;
+                    py += 24;
+                }
                 pane.add(new dev.erebus.client.gui.widget.Button(bx, py, bw, 18, a.label(), dev.erebus.client.gui.widget.Button.Style.PRIMARY, () -> {
                     screen.onClose();
                     a.run().run();

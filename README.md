@@ -76,6 +76,9 @@ the **World tags** settings on the Client page:
 - **Tag details**: the second part (distance, counts, how long ago) always, only for tags near the
   crosshair, or never.
 
+Tags that would land on top of each other stack upwards instead, with a thin line down to the spot
+each one marks.
+
 Each module that draws tags also has its own **Tag size** (under Tags in its settings), on top of the
 client-wide one, to make one module's tags smaller than the rest.
 
@@ -88,6 +91,12 @@ press H to hide it entirely.
 
 Each element is stored relative to the nearest screen edge, so layouts keep their place when the
 window size or GUI scale changes.
+
+With **Keep HUD elements apart** (Client page, on by default), an element that would cover another
+one, or the hotbar, hearts, food and armor bars, the potion icons or the chat box, slides out of the
+way: away from its screen edge first, then sideways, and back when there's room again. On a small
+screen with everything turned on it goes where it covers the least. Notifications are drawn on top
+of everything on a solid background.
 
 Built-in elements: Watermark, Module list (modules slide in and out as you toggle them),
 Coordinates (with Nether/Overworld conversion and facing), Server info (FPS, ping, speed), Nearby
