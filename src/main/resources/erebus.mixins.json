@@ -23,7 +23,8 @@
     "XRayBlockStateMixin",
     "XRayFluidMixin",
     "BlockUpdateMixin",
-    "ActivityPacketsMixin"
+    "ActivityPacketsMixin",
+    "MinecraftAccess"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -18,6 +18,7 @@ import java.util.List;
 /** HUD element visibility, presets and per-element settings, plus the entry to the HUD editor. */
 public final class HudPage extends Page {
     private HudElement selected;
+    private String shownElement;
 
     public HudPage(DashboardScreen screen) {
         super(screen);
@@ -48,19 +49,26 @@ public final class HudPage extends Page {
     @Override
     public void build(Container root, int x, int y, int w, int h) {
         HudManager hud = Erebus.hud();
+        if (selected == null) {
+            String was = DashboardScreen.PICKED.get(id());
+            for (HudElement e : hud.all()) if (e.name.equals(was)) selected = e;
+        }
         if (selected == null) selected = hud.all().get(0);
+        DashboardScreen.PICKED.put(id(), selected.name);
 
         int lx = x + 6;
         int lw = DashboardScreen.LIST - 12;
         root.add(new Button(lx, y + 6, lw, 20, "Open HUD editor", Button.Style.PRIMARY, screen::openHudEditor));
         int ry = y + 32;
+        dev.erebus.client.gui.widget.Glide glide = root.add(new dev.erebus.client.gui.widget.Glide("list:hud", lx, ry, lw, 20));
         for (HudElement e : hud.all()) {
+            if (e == selected) glide.at(ry);
             root.add(new ListRow(lx, ry, lw, 20, e.name, () -> e == selected, e::isEnabled,
                     () -> {
                         selected = e;
                         screen.rebuild();
                     },
-                    () -> hud.setEnabled(e, !e.isEnabled())));
+                    () -> hud.setEnabled(e, !e.isEnabled())).glided());
             ry += 21;
         }
         ry += 6;
@@ -80,6 +88,10 @@ public final class HudPage extends Page {
         HudElement e = selected;
         int paneX = x + DashboardScreen.LIST + 1;
         ScrollPanel pane = screen.listPanel(root, paneX, y + 1, w - DashboardScreen.LIST - 2, h - 2).key("hud:" + e.name);
+        if (!e.name.equals(shownElement)) {
+            if (shownElement != null) pane.reveal();
+            shownElement = e.name;
+        }
         int px = paneX + 12;
         int pw = pane.width - 24;
         int py = y + 12;

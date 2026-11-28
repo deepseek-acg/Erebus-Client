@@ -27,10 +27,11 @@ public final class HudManager {
     public static final Map<String, Set<String>> PRESETS = new LinkedHashMap<>();
 
     static {
-        PRESETS.put("PvP", Set.of("watermark", "modules", "nearby", "supplies", "armor", "info", "notifications"));
-        PRESETS.put("Travel", Set.of("watermark", "modules", "coordinates", "info", "notifications", "minimap"));
-        PRESETS.put("Base", Set.of("watermark", "modules", "coordinates", "nearby", "notifications", "minimap", "legend"));
-        PRESETS.put("All", Set.of("watermark", "modules", "coordinates", "info", "nearby", "supplies", "armor", "notifications", "minimap", "legend"));
+        PRESETS.put("PvP", Set.of("watermark", "modules", "nearby", "supplies", "armor", "info", "notifications", "target", "effects", "hunger"));
+        PRESETS.put("Travel", Set.of("watermark", "modules", "coordinates", "info", "notifications", "minimap", "compass", "rotation", "speedgraph"));
+        PRESETS.put("Base", Set.of("watermark", "modules", "coordinates", "nearby", "notifications", "minimap", "legend", "compass", "worldinfo"));
+        PRESETS.put("All", Set.of("watermark", "modules", "coordinates", "info", "nearby", "supplies", "armor", "notifications", "minimap", "legend",
+                "compass", "rotation", "hunger", "effects", "target", "speedgraph", "worldinfo"));
     }
 
     private final List<HudElement> elements = new ArrayList<>();
@@ -51,6 +52,13 @@ public final class HudManager {
         register(new ArmorElement());
         register(new dev.erebus.client.hud.elements.MinimapElement());
         register(new dev.erebus.client.hud.elements.FinderLegendElement());
+        register(new dev.erebus.client.hud.elements.CompassElement());
+        register(new dev.erebus.client.hud.elements.RotationElement());
+        register(new dev.erebus.client.hud.elements.HungerElement());
+        register(new dev.erebus.client.hud.elements.EffectsElement());
+        register(new dev.erebus.client.hud.elements.TargetElement());
+        register(new dev.erebus.client.hud.elements.SpeedGraphElement());
+        register(new dev.erebus.client.hud.elements.WorldInfoElement());
         register(new NotificationsElement()); // last, so toasts are drawn over the other elements
     }
 

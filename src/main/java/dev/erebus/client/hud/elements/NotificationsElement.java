@@ -82,7 +82,7 @@ public final class NotificationsElement extends HudElement {
     protected void draw(Ui ui, int x, int y, boolean preview) {
         if (entries.isEmpty()) {
             Layout l = layouts.get(0);
-            toast(ui, x, y, l, "Crystal Aura", "enabled", Notifications.Kind.ENABLED);
+            toast(ui, x, y, l, "Crystal Aura", "enabled", Notifications.Kind.ENABLED, 0.6f);
             return;
         }
         boolean up = growUp();
@@ -98,12 +98,15 @@ public final class NotificationsElement extends HudElement {
             float slide = e.slide.get();
             int shift = Math.round((1f - slide) * (l.w + 8));
             int tx = alignRight() ? x + width - l.w + shift : x - shift;
-            toast(ui, tx, ty, l, e.title, e.detail, e.kind);
+            float before = ui.alpha;
+            ui.alpha *= Math.max(0f, Math.min(1f, slide * 1.4f));
+            toast(ui, tx, ty, l, e.title, e.detail, e.kind, e.remaining());
+            ui.alpha = before;
             offset += l.h + GAP;
         }
     }
 
-    private void toast(Ui ui, int x, int y, Layout l, String title, String detail, Notifications.Kind kind) {
+    private void toast(Ui ui, int x, int y, Layout l, String title, String detail, Notifications.Kind kind, float left) {
         int r = ui.smallRadius();
         int accent = switch (kind) {
             case ENABLED, SUCCESS -> Theme.GOOD;
@@ -112,8 +115,11 @@ public final class NotificationsElement extends HudElement {
             default -> ui.theme.accent();
         };
         ui.round(x, y, l.w, l.h, r, ui.theme.background());
-        Render2D.roundRectBorder(ui.g, x, y, l.w, l.h, r, ui.theme.border());
+        ui.border(x, y, l.w, l.h, r, ui.theme.border());
         ui.rect(x, y + 3, 2, l.h - 6, accent);
+        // how long it has left, as a thin line along the bottom
+        int bar = Math.round((l.w - 2 * r - 4) * left);
+        if (bar > 0) ui.rect(x + r + 2, y + l.h - 2, bar, 1, dev.erebus.client.util.Colors.withAlpha(accent, 0x70));
         int tx = x + 8;
         int top = Ui.centerY(y, TOAST_H);
         int w = ui.text(title, tx, top, l.lines.isEmpty() ? ui.theme.text() : accent);

@@ -21,7 +21,7 @@ import java.util.Map;
 public final class MessagesPage extends Page {
     private static final int LINE_H = 11;
     /** Which source is shown (null = all of them). */
-    private String source;
+    private String source = DashboardScreen.PICKED.get("messages");
 
     public MessagesPage(DashboardScreen screen) {
         super(screen);
@@ -55,6 +55,8 @@ public final class MessagesPage extends Page {
         Map<String, Integer> sources = new LinkedHashMap<>();
         for (Notifications.Entry e : all) sources.merge(e.title, 1, Integer::sum);
         if (source != null && !sources.containsKey(source)) source = null;
+        if (source == null) DashboardScreen.PICKED.remove("messages");
+        else DashboardScreen.PICKED.put("messages", source);
 
         int lx = x + 6;
         int lw = DashboardScreen.LIST - 12;

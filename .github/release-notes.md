@@ -2,6 +2,13 @@ Erebus for Minecraft **1.21.11** (Fabric).
 
 **Install:** put the `erebus-<version>.jar` below in your `mods` folder together with [Fabric API](https://modrinth.com/mod/fabric-api) for 1.21.11. Requires Fabric Loader 0.20+ and Java 21. Open the dashboard with Right Shift.
 
+### New in 0.7.5
+- **XP Optimizer** (Player): throws experience bottles with a human click rhythm (a click speed wandering between Min and Max CPS, Gaussian jitter on every gap) and stops the moment the XP in the air and on the ground will finish repairing your mending gear, so no bottle is wasted. Hold right-click with bottles and it does the clicking, or bind it to a key and it switches to bottles, looks down, throws until repaired and puts everything back. Real key presses only. A repair bar under the crosshair shows durability, XP on its way and what's still needed.
+- **New HUD elements**: Compass (a heading tape with waypoints and finds), Rotation (exact yaw and pitch on a dial, and how far off the nearest axis you are: for highways), Hunger (food with the hidden saturation, and when regen or sprinting stops), Effects (potion timers with bars), Target (your opponent's face, health, absorption, pops, totem, armor wear), Speed graph and World info (time, moon, biome, light and mob spawning, chunk and region). The presets turn on the fitting ones.
+- **Supplies counts regular golden apples** instead of enchanted ones (those can be turned on separately).
+- **The menu remembers where you were**: page, the module picked on each page and every scroll position stay as they were when you close and reopen it.
+- **Smoother animations**: the menu fades and springs open and fades away when closed, pages crossfade, the selection glides between pages and modules, a module's settings cascade in, buttons flash when clicked, toasts spring in with a bar showing how long they have left, and the module list slides modules in and out.
+
 ### New in 0.7.4
 - **No more chat messages**: everything the modules have to tell you (finds, alerts, seeds, triangulated withers) is a notification in the corner, wrapped over a few lines, and is kept on the new **Messages** page in the dashboard, grouped by module, with buttons to copy coordinates, the seed or the message. Turn on Also in chat (Client page) if you want them in chat as well.
 - **World tags you can tune**: the labels floating over lights, activity, bases, structures, players and waypoints are smaller by default and follow new World tags settings on the Client page: size, opacity, shrink with distance, fade near your crosshair, and when to show their details. Every module that draws tags also has its own Tag size.

@@ -20,6 +20,13 @@ public final class ListRow extends Widget {
     private final Runnable onSelect;
     private final Runnable onSecondary;
     private Supplier<String> trailing = () -> null;
+    private boolean glided;
+
+    /** The selected row's highlight is drawn by a {@link Glide} under the list instead (so it can slide between rows). */
+    public ListRow glided() {
+        glided = true;
+        return this;
+    }
     private IntSupplier[] swatches = new IntSupplier[0];
     private final Anim hover = new Anim(0f, 20f);
     private String tooltip;
@@ -61,10 +68,10 @@ public final class ListRow extends Widget {
         boolean sel = selected.getAsBoolean();
         boolean on = enabled != null && enabled.getAsBoolean();
         int r = ui.smallRadius();
-        if (sel) {
+        if (sel && !glided) {
             ui.round(x, y, width, height, r, ui.theme.selected());
             ui.rect(x, y + 3, 2, height - 6, ui.theme.accent());
-        } else if (h > 0.01f) {
+        } else if (!sel && h > 0.01f) {
             ui.round(x, y, width, height, r, Colors.mulAlpha(ui.theme.hover(), h));
         }
         int tx = x + 8;

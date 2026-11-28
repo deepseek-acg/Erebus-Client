@@ -15,6 +15,8 @@ import java.util.Locale;
 public final class ModulesPage extends Page {
     private final Category category;
     private Module selected;
+    /** The module whose settings were last shown, so picking another one animates and a rebuild doesn't. */
+    private String shownModule;
 
     public ModulesPage(DashboardScreen screen, Category category) {
         super(screen);
@@ -61,18 +63,25 @@ public final class ModulesPage extends Page {
             }
             return;
         }
+        if (selected == null) { // the module this page had picked when the menu was last closed
+            String was = DashboardScreen.PICKED.get(id());
+            for (Module m : mods) if (m.name.equals(was)) selected = m;
+        }
         if (selected == null || !mods.contains(selected)) selected = mods.get(0);
+        if (category != null) DashboardScreen.PICKED.put(id(), selected.name);
 
         int lx = x + 6;
         int lw = DashboardScreen.LIST - 12;
         ScrollPanel list = screen.listPanel(root, lx, y + 6, lw, h - 12).key("modules-list:" + id());
         int ry = y + 6;
+        dev.erebus.client.gui.widget.Glide glide = list.add(new dev.erebus.client.gui.widget.Glide("list:" + id(), lx, ry, lw, 20));
         for (Module m : mods) {
+            if (m == selected) glide.at(ry);
             list.add(new ListRow(lx, ry, lw, 20, m.name, () -> m == selected, m::isEnabled,
                     () -> {
                         selected = m;
                         screen.rebuild();
-                    }, m::toggle)
+                    }, m::toggle).glided()
                     .trailing(() -> category == null ? m.category.label : m.keybind.isBound() ? m.keybind.keyName() : m.info())
                     .tooltip(m.description));
             ry += 21;
@@ -81,6 +90,10 @@ public final class ModulesPage extends Page {
         Module m = selected;
         int paneX = x + DashboardScreen.LIST + 1;
         ScrollPanel pane = screen.listPanel(root, paneX, y + 1, w - DashboardScreen.LIST - 2, h - 2).key("module:" + m.name);
+        if (!m.name.equals(shownModule)) { // a module just picked: its settings cascade in (not on every rebuild)
+            if (shownModule != null) pane.reveal();
+            shownModule = m.name;
+        }
         int px = paneX + 12;
         int pw = pane.width - 24;
         int py = y + 12;

@@ -1,6 +1,6 @@
 package dev.erebus.client.notify;
 
-import dev.erebus.client.util.Anim;
+import dev.erebus.client.util.Spring;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -27,8 +27,9 @@ public final class Notifications {
         public final List<Action> actions;
         public final long created = System.currentTimeMillis();
         final long life;
-        public final Anim slide = new Anim(0f, 16f);
-        public final Anim y = new Anim(-1f, 16f);
+        /** 0 off screen, 1 in place; springy, so it lands with a little overshoot. */
+        public final Spring slide = new Spring(0f, 240f, 22f);
+        public final Spring y = new Spring(-1f, 320f, 32f);
 
         Entry(String title, String detail, String body, Kind kind, List<Action> actions, long life) {
             this.title = title;
@@ -38,6 +39,11 @@ public final class Notifications {
             this.actions = actions;
             this.life = life;
             slide.target(1f);
+        }
+
+        /** How much of its time on screen is left, 1 to 0. */
+        public float remaining() {
+            return Math.max(0f, 1f - (System.currentTimeMillis() - created) / (float) life);
         }
     }
 
@@ -98,7 +104,7 @@ public final class Notifications {
             Entry e = it.next();
             if (now - e.created > e.life) {
                 e.slide.target(0f);
-                if (e.slide.get() <= 0.01f) it.remove();
+                if (e.slide.get() <= 0.02f) it.remove();
             }
         }
         return new ArrayList<>(ENTRIES);

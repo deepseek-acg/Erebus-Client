@@ -129,18 +129,37 @@ public final class Ui {
         return Text.width(s, true);
     }
 
+    /**
+     * Opacity everything drawn through this Ui is multiplied by (fading a menu in and out, a page crossfading, rows
+     * cascading in). Set it around what should fade and put it back after.
+     */
+    public float alpha = 1f;
+
+    /** A colour with the current {@link #alpha} applied. */
+    public int fade(int color) {
+        return alpha >= 0.999f ? color : dev.erebus.client.util.Colors.mulAlpha(color, Math.max(0f, alpha));
+    }
+
+    /** Too faded to bother drawing text (and fonts draw near-zero alpha as opaque). */
+    private boolean invisible(int color) {
+        return alpha < 0.999f && ((fade(color) >>> 24) & 0xFF) < 6;
+    }
+
     /** Draws text; returns the drawn width. */
     public int text(String s, int x, int y, int color) {
-        return Text.draw(g, s, x, y, color, false, theme.textShadow);
+        if (invisible(color)) return width(s);
+        return Text.draw(g, s, x, y, fade(color), false, theme.textShadow);
     }
 
     public int textBold(String s, int x, int y, int color) {
-        return Text.draw(g, s, x, y, color, true, theme.textShadow);
+        if (invisible(color)) return widthBold(s);
+        return Text.draw(g, s, x, y, fade(color), true, theme.textShadow);
     }
 
     /** Text with a drop shadow regardless of the theme setting (for text drawn over the game world). */
     public int textShadowed(String s, int x, int y, int color, boolean bold) {
-        return Text.draw(g, s, x, y, color, bold, true);
+        if (invisible(color)) return Text.width(s, bold);
+        return Text.draw(g, s, x, y, fade(color), bold, true);
     }
 
     public void textRight(String s, int right, int y, int color) {
@@ -157,14 +176,15 @@ public final class Ui {
         for (int i = 0; i < s.length(); i++) {
             int cx = x + Text.width(s.substring(0, i), bold);
             int color = dev.erebus.client.util.Colors.lerp(from, to, i / (float) n);
-            Text.draw(g, String.valueOf(s.charAt(i)), cx, y, color, bold, theme.textShadow);
+            if (!invisible(color)) Text.draw(g, String.valueOf(s.charAt(i)), cx, y, fade(color), bold, theme.textShadow);
         }
         return Text.width(s, bold);
     }
 
     /** Draws an icon whose box is {@code size} units tall with its top-left at (x, y). */
     public void icon(Icon icon, float x, float y, float size, int color) {
-        Text.icon(g, icon, x, y, size, color);
+        if (invisible(color)) return;
+        Text.icon(g, icon, x, y, size, fade(color));
     }
 
     /** A world label: a dark pill with an optional colour icon, centred on (cx, y). */
@@ -259,15 +279,27 @@ public final class Ui {
     // ---------------------------------------------------------------- shapes
 
     public void rect(int x, int y, int w, int h, int color) {
-        Render2D.rect(g, x, y, w, h, color);
+        Render2D.rect(g, x, y, w, h, fade(color));
     }
 
     public void round(int x, int y, int w, int h, int r, int color) {
-        Render2D.roundRect(g, x, y, w, h, r, color);
+        Render2D.roundRect(g, x, y, w, h, r, fade(color));
     }
 
     public void border(int x, int y, int w, int h, int r, int color) {
-        Render2D.roundRectBorder(g, x, y, w, h, r, color);
+        Render2D.roundRectBorder(g, x, y, w, h, r, fade(color));
+    }
+
+    // ---------------------------------------------------------------- animation state
+
+    private final java.util.Map<String, dev.erebus.client.util.Spring> springs = new java.util.HashMap<>();
+
+    /**
+     * A spring that outlives the widgets (screens rebuild their widgets on many clicks), for things that glide from
+     * where they were: a selection highlight moving to the row you picked.
+     */
+    public dev.erebus.client.util.Spring spring(String key, float initial) {
+        return springs.computeIfAbsent(key, k -> new dev.erebus.client.util.Spring(initial, 320f, 28f));
     }
 
     /** Theme radius scaled for small elements (buttons, inputs). */

@@ -29,5 +29,6 @@ public final class Modules {
         modules.register(new dev.erebus.client.module.combat.CrystalAura());
         modules.register(new dev.erebus.client.module.combat.AimAssist());
         modules.register(new dev.erebus.client.module.combat.AutoTotem());
+        modules.register(new dev.erebus.client.module.player.XpOptimizer());
     }
 }

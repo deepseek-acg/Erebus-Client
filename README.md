@@ -45,6 +45,11 @@ To start a development client:
 - **Theme** starts from a preset (Void, Abyss, Ember, Mono). You can then change every color with an
   HSV picker or hex code, plus corner radius, panel opacity, drop shadow, background blur, text
   shadow and animations. Changes apply live.
+- The dashboard remembers where you were: the page, the module (or HUD element, or message filter)
+  picked on each page and how far each list and settings pane is scrolled, until the game closes.
+- It opens with a fade and a little spring and fades away when closed; pages crossfade, the
+  highlight glides to the page or module you pick, and a module's settings cascade in row by row.
+  Turn animations off on the Theme page.
 - **Messages** keeps everything the modules told you this session (finds, alerts, seeds,
   triangulated withers), newest first, grouped by module, with buttons to copy coordinates, the seed
   or the whole message. The sidebar shows how many came in since you last looked.
@@ -84,9 +89,23 @@ press H to hide it entirely.
 Each element is stored relative to the nearest screen edge, so layouts keep their place when the
 window size or GUI scale changes.
 
-Built-in elements: Watermark, Module list, Coordinates (with Nether/Overworld conversion and
-facing), Server info (FPS, ping, speed), Nearby players, Supplies (totems, crystals, gapples,
-obsidian, XP bottles), Armor, Minimap, Finder legend and Notifications (drawn over the others).
+Built-in elements: Watermark, Module list (modules slide in and out as you toggle them),
+Coordinates (with Nether/Overworld conversion and facing), Server info (FPS, ping, speed), Nearby
+players, Supplies (totems, crystals, golden apples, obsidian, XP bottles; enchanted golden apples
+can be turned on too), Armor, Minimap, Finder legend and Notifications (drawn over the others), and:
+
+| Element | What it shows |
+| --- | --- |
+| Compass | A heading tape across the top: directions and degrees sliding past as you turn, your waypoints and the bases and stashes found so far marked where they lie (with a name and distance when you face one, an arrow at the edge for those behind you). |
+| Rotation | Exact yaw and pitch on a heading dial and pitch gauge, the nearest axis or diagonal and how far off it you are, green when you're on it and which way to turn: for lining up on a highway. |
+| Hunger | Ten food segments with the hidden saturation laid over them in gold, the numbers, and when it matters: no regen below 18 food, no sprinting at 6. |
+| Effects | Potion effects with their level and time left, each with a bar running down; good ones first, harmful ones tinted, ones about to run out blink. |
+| Target | The player you're fighting (looking at, last hit, or nearest in range): face, health with the part just lost draining away and absorption in gold, distance, totem pops, totem in hand, armor wear. |
+| Speed graph | Your speed over the last few seconds as a filled graph, with now, average and peak, in blocks/s or km/h. |
+| World info | Day and time, moon phase, biome, block and sky light at your feet (and whether monsters can spawn there, or will at night), chunk, your spot in it and region file. |
+
+The new elements start off; turn them on from the HUD page, or with a layout preset (PvP adds Target,
+Effects and Hunger; Travel adds Compass, Rotation and Speed graph; Base adds Compass and World info).
 
 ## Modules
 
@@ -104,6 +123,7 @@ obsidian, XP bottles), Armor, Minimap, Finder legend and Notifications (drawn ov
 | Logout Spots | Render | Marks where players were standing when they logged out, with name, health and how long ago. |
 | Player ESP | Render | Boxes, tracers and name tags on other players through walls, with health, distance, ping, held item, armor and totem pops. Ported from Nyx. |
 | X-Ray | Render | Shows only ores, spawners, storage and the blocks you pick; dims ores that are probably fakes on anti-xray servers and outlines the real ones; shades caves, lava and water. Ported from Nyx. |
+| XP Optimizer | Player | Throws experience bottles with a human click rhythm (wandering click speed, Gaussian jitter) and stops as soon as the XP on its way will finish repairing your mending gear. Hold right-click, or bind it to throw until repaired and turn off. |
 | Auto Totem | Combat | Keeps a totem in your offhand with a random, ping-adjusted delay, by real key presses and cursor moves; Smart mode reacts to crystals, anchors, beds, falls and maces, not just low health. Ported from Nyx. |
 | Auto Safe Anchor | Combat | One press: places a respawn anchor where you look, charges it, puts a shield block between you and the blast, detonates it, then turns off. Ported from Mist. |
 | Crystal Aura | Combat | Places and breaks end crystals on nearby opponents as fast as the server answers, sticking to one spot and placing obsidian only when it clearly pays off. Ported from Mist. |
@@ -623,6 +643,31 @@ missing from the tab list. Pops are counted from the event the server sends when
 reset when the player dies. With Better visuals, a ring under each player shows their health and a gold
 burst marks a pop. Ported from Nyx; Nyx's on-screen player list is the existing Nearby players HUD
 element.
+
+## XP Optimizer
+
+Throws experience bottles for you and stops the moment the XP already in the air and on the ground
+will finish repairing your mending gear (armor you wear and what you hold), so no bottle is wasted.
+Every bottle is a real press of the use key; looking down is simulated mouse movement.
+
+- **Activation**: *Hold use* takes over while you hold right-click with bottles (looking down, by
+  default): it does the clicking and holds back the game's own repeat, and once your gear is covered
+  holding longer throws nothing more. *While enabled* (bind it to a key) picks the bottles from your
+  hotbar, looks straight down, throws until your gear is repaired, then puts your slot and view back
+  and turns itself off, with a message saying how many it threw.
+- **Click rhythm**: the click speed wanders between **Min CPS** and **Max CPS**, picking a new value
+  to drift towards every **Speed change** seconds, and every gap gets **Jitter** (Gaussian, in ms) on
+  top. **Max per tick** caps how many bottles go in one game tick.
+- **Stop when repaired** counts what's on its way two ways: the bottles and orbs it can see, and its
+  own tally of what it threw (7 XP a bottle on average) minus what's been absorbed since. The
+  orbs alone undercount, because the game merges orbs near each other and doesn't tell the client by
+  how many. **Extra bottles** throws a few more on purpose.
+- **Better visuals**: a repair bar under the crosshair with your gear's durability, the XP on its
+  way, how much is still needed and the current click speed.
+
+In testing, a diamond chestplate and leggings needing 360 XP took 52 bottles (of 64) at an average
+of 10.7 clicks a second with gaps from 33 to 190 ms, were fully repaired, and 4 XP ended up in the
+XP bar; slot and view went back to where they were.
 
 ## Auto Totem
 

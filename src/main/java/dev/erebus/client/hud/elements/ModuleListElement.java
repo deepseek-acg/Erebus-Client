@@ -11,6 +11,7 @@ import dev.erebus.client.util.Colors;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /** Enabled modules, sorted by width, with an animated gradient. */
 public final class ModuleListElement extends HudElement {
@@ -26,18 +27,30 @@ public final class ModuleListElement extends HudElement {
     private record Entry(String name, String suffix) {
     }
 
+    /** One line as it's drawn: sliding in from the edge when a module turns on, out when it turns off, gliding up or down when the order changes. */
+    private static final class Line {
+        Entry entry;
+        int width;
+        int order;
+        final dev.erebus.client.util.Spring in = new dev.erebus.client.util.Spring(0f, 260f, 26f);
+        final dev.erebus.client.util.Spring y;
+
+        Line(float y) {
+            this.y = new dev.erebus.client.util.Spring(y, 300f, 30f);
+        }
+    }
+
     private final List<Entry> entries = new ArrayList<>();
-    private final List<Integer> widths = new ArrayList<>();
+    private final java.util.Map<String, Line> lines = new java.util.LinkedHashMap<>();
 
     public ModuleListElement() {
-        super("modules", "Module list", "Enabled modules, sorted so the list forms a clean edge.", true,
-                HAnchor.RIGHT, VAnchor.TOP, 2, 2);
+        super("modules", "Module list", "Enabled modules, sorted so the list forms a clean edge. They slide in and out as you "
+                + "turn them on and off.", true, HAnchor.RIGHT, VAnchor.TOP, 2, 2);
     }
 
     @Override
     protected int[] measure(Ui ui, boolean preview) {
         entries.clear();
-        widths.clear();
         for (Module m : Erebus.modules().enabled()) entries.add(new Entry(m.name, suffixes.get() ? m.suffix() : null));
         if (entries.isEmpty() && preview) {
             entries.add(new Entry("Crystal Aura", suffixes.get() ? "Damage" : null));
@@ -47,17 +60,33 @@ public final class ModuleListElement extends HudElement {
             entries.add(new Entry("ESP", suffixes.get() ? "Box" : null));
             entries.add(new Entry("Sprint", null));
         }
-        if (entries.isEmpty()) return new int[]{0, 0};
         if (sort.is("Width")) entries.sort(Comparator.comparingInt((Entry e) -> textWidth(ui, e)).reversed());
         else entries.sort(Comparator.comparing(Entry::name, String.CASE_INSENSITIVE_ORDER));
         if (growUp()) java.util.Collections.reverse(entries);
+        java.util.Set<String> now = new java.util.HashSet<>();
         int w = 0;
-        for (Entry e : entries) {
-            int tw = textWidth(ui, e) + 6 + (sideBar.get() ? 2 : 0);
-            widths.add(tw);
-            w = Math.max(w, tw);
+        for (int i = 0; i < entries.size(); i++) {
+            Entry e = entries.get(i);
+            now.add(e.name);
+            int fi = i;
+            Line l = lines.computeIfAbsent(e.name, k -> new Line(fi * LINE_H));
+            l.entry = e;
+            l.order = i;
+            l.width = textWidth(ui, e) + 6 + (sideBar.get() ? 2 : 0);
+            l.in.target(1f);
+            l.y.target(i * LINE_H);
+            w = Math.max(w, l.width);
         }
-        return new int[]{w, entries.size() * LINE_H};
+        // the ones turned off slide out where they were
+        lines.entrySet().removeIf(en -> !now.contains(en.getKey()) && en.getValue().in.target() == 0f && en.getValue().in.get() < 0.02f);
+        for (Map.Entry<String, Line> en : lines.entrySet()) {
+            if (!now.contains(en.getKey())) {
+                en.getValue().in.target(0f);
+                w = Math.max(w, en.getValue().width);
+            }
+        }
+        if (lines.isEmpty()) return new int[]{0, 0};
+        return new int[]{w, Math.max(1, entries.size()) * LINE_H};
     }
 
     private int textWidth(Ui ui, Entry e) {
@@ -80,18 +109,25 @@ public final class ModuleListElement extends HudElement {
     @Override
     protected void draw(Ui ui, int x, int y, boolean preview) {
         boolean right = alignRight();
-        for (int i = 0; i < entries.size(); i++) {
-            Entry e = entries.get(i);
-            int lw = widths.get(i);
-            int lx = right ? x + width - lw : x;
-            int ly = y + i * LINE_H;
-            int c = lineColor(ui, i);
-            if (background.get()) ui.rect(lx, ly, lw, LINE_H, ui.theme.hudBackground());
+        float before = ui.alpha;
+        for (Line l : lines.values()) {
+            Entry e = l.entry;
+            float in = l.in.update(ui.dt);
+            float ly = l.y.update(ui.dt);
+            if (in <= 0.01f) continue;
+            int lw = l.width;
+            int shift = Math.round((1f - in) * (lw + 4));
+            int lx = right ? x + width - lw + shift : x - shift;
+            int yy = y + Math.round(ly);
+            ui.alpha = before * Math.max(0f, Math.min(1f, in));
+            int c = lineColor(ui, l.order);
+            if (background.get()) ui.rect(lx, yy, lw, LINE_H, ui.theme.hudBackground());
             int bar = sideBar.get() ? 2 : 0;
-            if (bar > 0) ui.rect(right ? lx + lw - bar : lx, ly, bar, LINE_H, c);
+            if (bar > 0) ui.rect(right ? lx + lw - bar : lx, yy, bar, LINE_H, c);
             int tx = right ? lx + 3 : lx + bar + 3;
-            tx += ui.text(e.name, tx, ly + 2, c);
-            if (e.suffix != null) ui.text(" " + e.suffix, tx, ly + 2, ui.theme.dim());
+            tx += ui.text(e.name, tx, yy + 2, c);
+            if (e.suffix != null) ui.text(" " + e.suffix, tx, yy + 2, ui.theme.dim());
         }
+        ui.alpha = before;
     }
 }

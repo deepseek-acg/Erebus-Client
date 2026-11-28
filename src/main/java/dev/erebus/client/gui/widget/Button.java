@@ -15,6 +15,8 @@ public class Button extends Widget {
     private Style style;
     private Supplier<Boolean> active = () -> false;
     private final Anim hover = new Anim(0f, 20f);
+    /** A brief flash when clicked. */
+    private final Anim press = new Anim(0f, 9f);
     private dev.erebus.client.render.font.Icon icon;
 
     public Button icon(dev.erebus.client.render.font.Icon icon) {
@@ -51,6 +53,7 @@ public class Button extends Widget {
         hover.target(hot ? 1f : 0f);
         boolean on = active.get();
         int r = ui.smallRadius();
+        float p = press.update(ui.dt);
         int bg;
         int fg;
         switch (on ? Style.PRIMARY : style) {
@@ -67,6 +70,7 @@ public class Button extends Widget {
                 fg = Colors.lerp(ui.theme.dim(), ui.theme.text(), h);
             }
         }
+        if (p > 0.01f) bg = Colors.lerp(bg, Colors.withAlpha(ui.theme.accent(), 0xC0), p * 0.5f);
         ui.round(x, y, width, height, r, bg);
         String text = label.get();
         if (icon != null && text.isEmpty()) {
@@ -89,6 +93,8 @@ public class Button extends Widget {
             ui.mc.getSoundManager().play(net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(
                     net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK.value(), 1.6f, 0.18f));
         }
+        press.snap(1f);
+        press.target(0f);
         onClick.run();
         return true;
     }
