@@ -123,6 +123,26 @@ public final class ActivityRadar extends Module {
     private final Map<Long, Long> machineNotified = new HashMap<>();
     private final Map<Integer, Vec3> cartLast = new HashMap<>();
     private final Map<Integer, Long> cartAt = new HashMap<>();
+    /** Per cart: how far it has rolled since it started moving, and when it started. */
+    private final Map<Integer, double[]> cartRun = new HashMap<>();
+    /** Where a mob, item or arrow set off a plate or tripwire just now: what that sets off nearby isn't a person either. */
+    private final ArrayDeque<Event> mobTriggers = new ArrayDeque<>();
+    /** How far out mobs are being sent to you right now: past this a villager opening a door can't be seen. */
+    private double mobSight = 48;
+    /**
+     * Where projectiles and falling blocks were in the last moment. The server tells you one is gone the instant it hits,
+     * but the block it changed (a door a wind charge flung open, the anvil that landed) only at the end of its tick.
+     */
+    private final Map<Integer, Moved> movers = new HashMap<>();
+    /**
+     * Machine activity held back a moment: a lamp, door or dispenser can reach you before the plate or tripwire that set
+     * it off (a dispenser's shot comes at once, block changes at the end of the tick), and if that turns out to be a mob's
+     * doing, so is this.
+     */
+    private final ArrayDeque<Event> held = new ArrayDeque<>();
+
+    private record Moved(Vec3 pos, long at, boolean falling) {
+    }
     private List<Spot> spots = List.of();
     private ResourceKey<Level> dim;
     private int ticks;
@@ -187,6 +207,9 @@ public final class ActivityRadar extends Module {
     @Override
     protected void onDisable() {
         events.clear();
+        mobTriggers.clear();
+        held.clear();
+        cartRun.clear();
         spots = List.of();
         info = null;
     }
@@ -212,7 +235,7 @@ public final class ActivityRadar extends Module {
         }
         switch (type) {
             case LevelEvent.SOUND_DISPENSER_DISPENSE, LevelEvent.SOUND_DISPENSER_FAIL, LevelEvent.SOUND_DISPENSER_PROJECTILE_LAUNCH -> {
-                if (machines.get()) add(pos, Kind.Dispense);
+                if (machines.get()) hold(pos, Kind.Dispense); // unless it's a jungle temple trap a mob walked into
             }
             case LevelEvent.SOUND_CRAFTER_CRAFT, LevelEvent.SOUND_CRAFTER_FAIL -> {
                 if (machines.get()) add(pos, Kind.Crafter);
@@ -224,23 +247,50 @@ public final class ActivityRadar extends Module {
             case LevelEvent.PARTICLES_DESTROY_BLOCK -> {
                 if (!people.get() || mc.level == null) return;
                 BlockState st = Block.stateById(data);
-                if (natural(st)) return; // leaves decaying, crops trampled, snow...
-                add(pos, Kind.Mining);
+                if (natural(st) || brokenByWorld(pos, st)) return;
+                add(pos, Kind.Mining); // (a piston crushing a block shows the same thing, but only on its own side, never sent)
             }
             default -> {
             }
         }
     }
 
+    /**
+     * A block broken by something other than a person: a sheep eating grass, a zombie or vindicator breaking a door, the
+     * wither, a ravager, silverfish coming out of stone, an arrow shattering a pot, a boat running over a lily pad.
+     */
+    private boolean brokenByWorld(BlockPos pos, BlockState st) {
+        Block b = st.getBlock();
+        if (b instanceof net.minecraft.world.level.block.InfestedBlock
+                && near(pos, 12, e -> e instanceof net.minecraft.world.entity.monster.Silverfish)) {
+            return true; // a silverfish calls the others out of the stone around it
+        }
+        if (b == Blocks.GRASS_BLOCK && near(pos, 3, e -> e instanceof net.minecraft.world.entity.animal.sheep.Sheep)) return true;
+        if (b == Blocks.DECORATED_POT || b == Blocks.LILY_PAD) {
+            if (near(pos, 3, e -> e instanceof net.minecraft.world.entity.projectile.Projectile
+                    || e instanceof net.minecraft.world.entity.vehicle.boat.AbstractBoat)) return true;
+        }
+        return mobCaused(pos, 3, e -> e instanceof net.minecraft.world.entity.Mob);
+    }
+
     private void blockEvent(BlockPos pos, Block block, int b0, int b1) {
         if (block == Blocks.PISTON || block == Blocks.STICKY_PISTON) {
-            if (machines.get()) add(pos, Kind.Piston);
-        } else if (block == Blocks.CHEST || block == Blocks.TRAPPED_CHEST || block == Blocks.ENDER_CHEST || block instanceof net.minecraft.world.level.block.ShulkerBoxBlock) {
-            if (people.get() && b0 == 1 && b1 > 0) add(pos, Kind.Storage); // b1 = how many have it open now
+            if (machines.get()) hold(pos, Kind.Piston);
+        } else if (block instanceof net.minecraft.world.level.block.ChestBlock || block == Blocks.ENDER_CHEST
+                || block instanceof net.minecraft.world.level.block.ShulkerBoxBlock) {
+            // b1 = how many have it open now; copper golems open chests too, sorting items between them
+            if (people.get() && b0 == 1 && b1 > 0
+                    && !mobCaused(pos, 3, e -> e instanceof net.minecraft.world.entity.animal.golem.CopperGolem)) {
+                add(pos, Kind.Storage);
+            }
         } else if (block == Blocks.NOTE_BLOCK || block == Blocks.BELL) {
-            if (machines.get()) add(pos, Kind.Note);
+            // villagers ring the bell when raiders come, and arrows and wind charges ring it too
+            if (block == Blocks.BELL && (near(pos, 3, e -> e instanceof net.minecraft.world.entity.projectile.Projectile)
+                    || mobCaused(pos, 4, e -> e instanceof net.minecraft.world.entity.npc.villager.AbstractVillager))) return;
+            if (machines.get()) hold(pos, Kind.Note);
         } else if (block == Blocks.SPAWNER || block == Blocks.TRIAL_SPAWNER) {
-            if (machines.get()) add(pos, Kind.Spawner); // it just spawned: a player is within its range
+            // it just spawned, so a player is within 16 blocks of it: unless that's you
+            if (machines.get() && mc.player != null && mc.player.position().distanceToSqr(Vec3.atCenterOf(pos)) > 17 * 17) add(pos, Kind.Spawner);
         }
     }
 
@@ -263,27 +313,133 @@ public final class ActivityRadar extends Module {
             Block b = after.getBlock();
             if (b == Blocks.DAYLIGHT_DETECTOR || b == Blocks.REDSTONE_ORE || b == Blocks.DEEPSLATE_REDSTONE_ORE
                     || b instanceof net.minecraft.world.level.block.SculkSensorBlock || b == Blocks.CAMPFIRE || b == Blocks.SOUL_CAMPFIRE
-                    || b instanceof net.minecraft.world.level.block.CandleBlock || b instanceof net.minecraft.world.level.block.AbstractFurnaceBlock) {
+                    || b instanceof net.minecraft.world.level.block.CandleBlock || b instanceof net.minecraft.world.level.block.AbstractFurnaceBlock
+                    || b instanceof net.minecraft.world.level.block.LightningRodBlock) { // struck by lightning
                 return;
             }
             if (changed == BlockStateProperties.OPEN) {
                 if (!people.get()) return;
-                if (b == Blocks.BARREL) add(pos, Kind.Storage);
-                else if (after.getValue(BlockStateProperties.OPEN)) add(pos, Kind.Door); // count the opening, not the closing
+                if (b == Blocks.BARREL) {
+                    add(pos, Kind.Storage);
+                } else if (after.getValue(BlockStateProperties.OPEN) && !openedByWorld(pos)) {
+                    add(pos, Kind.Door); // count the opening, not the closing
+                }
                 return;
             }
-            if ((b instanceof net.minecraft.world.level.block.LeverBlock || b instanceof net.minecraft.world.level.block.ButtonBlock)
-                    && changed == BlockStateProperties.POWERED) {
-                if (people.get() && after.getValue(BlockStateProperties.POWERED)) add(pos, Kind.Switch);
+            if (b instanceof net.minecraft.world.level.block.LeverBlock || b instanceof net.minecraft.world.level.block.ButtonBlock) {
+                if (changed != BlockStateProperties.POWERED) return;
+                // an arrow stuck in a wooden button, or a wind charge (a breeze's, in a trial chamber) flicking it
+                if (people.get() && after.getValue(BlockStateProperties.POWERED) && !hitByProjectile(pos)) add(pos, Kind.Switch);
+                return;
+            }
+            if (b instanceof net.minecraft.world.level.block.BasePressurePlateBlock || b instanceof net.minecraft.world.level.block.TripWireBlock
+                    || b instanceof net.minecraft.world.level.block.TripWireHookBlock) {
+                if (!steppedOnByPerson(pos, before, after)) return;
+            } else if (b instanceof net.minecraft.world.level.block.TargetBlock) {
+                return; // only ever lit up by something hitting it, almost always an arrow
+            } else {
+                if (redstone.get()) hold(pos, Kind.Redstone); // unless it's downstream of a plate a mob stepped on
                 return;
             }
             if (redstone.get()) add(pos, Kind.Redstone);
             return;
         }
         // something placed where there was nothing (not lava meeting water, which makes cobblestone, stone, obsidian or basalt)
-        if (building.get() && (before.isAir() || before.canBeReplaced()) && !after.isAir() && isBuilding(after) && !fluidMade(pos, before, after)) {
+        if (building.get() && (before.isAir() || before.canBeReplaced()) && !after.isAir() && isBuilding(after) && !fluidMade(pos, before, after)
+                && !near(pos, 2, e -> e instanceof net.minecraft.world.entity.item.FallingBlockEntity) && !moverNear(pos, 2.5, true)) { // an anvil landing
             add(pos, Kind.Building);
         }
+    }
+
+    /**
+     * Villagers, illagers, piglins and zombie villagers open doors and gates; a wind charge flings them open. Past the
+     * distance mobs are being sent to you, you can't see who did it, so there it only counts with a player next to it.
+     */
+    private boolean openedByWorld(BlockPos pos) {
+        if (hitByProjectile(pos)) return true;
+        if (mobCaused(pos, 3, e -> e instanceof net.minecraft.world.entity.npc.villager.AbstractVillager
+                || e instanceof net.minecraft.world.entity.monster.illager.AbstractIllager
+                || e instanceof net.minecraft.world.entity.monster.piglin.AbstractPiglin
+                || e instanceof net.minecraft.world.entity.monster.zombie.Zombie)) return true;
+        return beyondMobSight(pos) && !playerNear(pos, 8);
+    }
+
+    /**
+     * A pressure plate or tripwire set off by a person, not by a mob, an item, an arrow or a minecart. Only the press
+     * counts (the release follows on its own), and when it was something else, what it sets off nearby is left out too.
+     */
+    private boolean steppedOnByPerson(BlockPos pos, BlockState before, BlockState after) {
+        boolean pressed = after.hasProperty(BlockStateProperties.POWERED) ? after.getValue(BlockStateProperties.POWERED)
+                : after.hasProperty(BlockStateProperties.POWER) ? after.getValue(BlockStateProperties.POWER) > before.getValue(BlockStateProperties.POWER)
+                : after.hasProperty(BlockStateProperties.ATTACHED) && after.getValue(BlockStateProperties.ATTACHED);
+        boolean world = mobCaused(pos, 2, e -> !(e instanceof Player)) || hitByProjectile(pos) || beyondMobSight(pos) && !playerNear(pos, 6);
+        if (world || !pressed) { // the release follows by itself, and so does whatever it switches off
+            mobTriggers.addLast(new Event(pos.immutable(), Kind.Redstone, System.currentTimeMillis()));
+            if (mobTriggers.size() > 256) mobTriggers.pollFirst();
+        }
+        return pressed && !world;
+    }
+
+    private void hold(BlockPos pos, Kind kind) {
+        held.addLast(new Event(pos.immutable(), kind, System.currentTimeMillis()));
+        if (held.size() > 4096) held.pollFirst();
+    }
+
+    private void releaseHeld(long now) {
+        while (!held.isEmpty() && now - held.peekFirst().at > 200) {
+            Event e = held.pollFirst();
+            if (!mobTriggered(e.pos)) add(e.pos, e.kind);
+        }
+    }
+
+    /** Within a few seconds and blocks of a plate or tripwire something other than a person set off. */
+    private boolean mobTriggered(BlockPos pos) {
+        long now = System.currentTimeMillis();
+        while (!mobTriggers.isEmpty() && now - mobTriggers.peekFirst().at > 4000) mobTriggers.pollFirst();
+        for (Event e : mobTriggers) if (e.pos.distSqr(pos) < 16 * 16) return true;
+        return false;
+    }
+
+    private boolean hitByProjectile(BlockPos pos) {
+        // an arrow covers three blocks a tick, so where you last saw it can be a little short of what it hit
+        return near(pos, 3.5, e -> e instanceof net.minecraft.world.entity.projectile.Projectile) || moverNear(pos, 4, false);
+    }
+
+    private boolean moverNear(BlockPos pos, double r, boolean falling) {
+        long now = System.currentTimeMillis();
+        Vec3 c = Vec3.atCenterOf(pos);
+        for (Moved m : movers.values()) {
+            if (m.falling == falling && now - m.at < 1500 && m.pos.distanceToSqr(c) < r * r) return true;
+        }
+        return false;
+    }
+
+    /** Remember where projectiles and falling blocks are, for {@link #movers}. */
+    private void watchMovers(long now) {
+        for (Entity e : mc.level.entitiesForRendering()) {
+            boolean falling = e instanceof net.minecraft.world.entity.item.FallingBlockEntity;
+            if (falling || e instanceof net.minecraft.world.entity.projectile.Projectile) movers.put(e.getId(), new Moved(e.position(), now, falling));
+        }
+        if (ticks % 20 == 0) movers.values().removeIf(m -> now - m.at > 1500);
+    }
+
+    /** An entity of this sort within r blocks (of its hitbox, so a wither's size counts), and no other player nearby to blame instead. */
+    private boolean mobCaused(BlockPos pos, double r, java.util.function.Predicate<Entity> what) {
+        return near(pos, r, e -> !(e instanceof Player) && what.test(e)) && !playerNear(pos, 6);
+    }
+
+    private boolean playerNear(BlockPos pos, double r) {
+        return near(pos, r, e -> e instanceof Player && e != mc.player);
+    }
+
+    private boolean near(BlockPos pos, double r, java.util.function.Predicate<Entity> what) {
+        return mc.level != null && !mc.level.getEntities((Entity) null, new AABB(pos).inflate(r), what::test).isEmpty();
+    }
+
+    private boolean beyondMobSight(BlockPos pos) {
+        if (mc.player == null) return false;
+        double dx = pos.getX() + 0.5 - mc.player.getX(), dz = pos.getZ() + 0.5 - mc.player.getZ();
+        return dx * dx + dz * dz > mobSight * mobSight;
     }
 
     /** Lava and water make cobblestone, stone, obsidian and basalt where they meet. */
@@ -300,7 +456,8 @@ public final class ActivityRadar extends Module {
     /** Blocks people place that the world doesn't place on its own while you watch. */
     private static boolean isBuilding(BlockState st) {
         Block b = st.getBlock();
-        if (!st.getFluidState().isEmpty() || natural(st)) return false;
+        // endermen put down what they carry (TNT, pumpkins, melons, dirt...)
+        if (!st.getFluidState().isEmpty() || natural(st) || st.is(net.minecraft.tags.BlockTags.ENDERMAN_HOLDABLE)) return false;
         return PlayerBlocks.isPlayerOnly(b) || b == Blocks.OBSIDIAN || b == Blocks.COBBLESTONE || b == Blocks.GLASS
                 || st.is(net.minecraft.tags.BlockTags.PLANKS) || st.is(net.minecraft.tags.BlockTags.STONE_BRICKS)
                 || b == Blocks.CRAFTING_TABLE || b == Blocks.TORCH || b == Blocks.WALL_TORCH
@@ -314,7 +471,16 @@ public final class ActivityRadar extends Module {
                 || b == Blocks.FIRE || b == Blocks.SOUL_FIRE || b == Blocks.ICE || b == Blocks.FROSTED_ICE || b == Blocks.TURTLE_EGG
                 || b == Blocks.POINTED_DRIPSTONE || st.is(net.minecraft.tags.BlockTags.REPLACEABLE)
                 || b == Blocks.FARMLAND || b == Blocks.CACTUS || b == Blocks.SUGAR_CANE || b == Blocks.BAMBOO || b == Blocks.KELP
-                || b == Blocks.KELP_PLANT || b == Blocks.CHORUS_FLOWER || b == Blocks.CHORUS_PLANT;
+                || b == Blocks.KELP_PLANT || b == Blocks.CHORUS_FLOWER || b == Blocks.CHORUS_PLANT
+                // grown, hatched, or popped off when what held them up went
+                || st.is(net.minecraft.tags.BlockTags.FLOWERS) || st.is(net.minecraft.tags.BlockTags.SAPLINGS)
+                || st.is(net.minecraft.tags.BlockTags.CAVE_VINES) || b == Blocks.SWEET_BERRY_BUSH || b == Blocks.NETHER_WART
+                || b == Blocks.COCOA || b == Blocks.BROWN_MUSHROOM || b == Blocks.RED_MUSHROOM || b == Blocks.BAMBOO_SAPLING
+                || b == Blocks.SNIFFER_EGG || b == Blocks.FROGSPAWN || b == Blocks.SEA_PICKLE || b == Blocks.BIG_DRIPLEAF
+                || b == Blocks.BIG_DRIPLEAF_STEM || b == Blocks.SMALL_DRIPLEAF || b == Blocks.SPORE_BLOSSOM || b == Blocks.HANGING_ROOTS
+                || b == Blocks.WEEPING_VINES || b == Blocks.WEEPING_VINES_PLANT || b == Blocks.TWISTING_VINES
+                || b == Blocks.TWISTING_VINES_PLANT || b == Blocks.PALE_HANGING_MOSS || b == Blocks.MOSS_CARPET
+                || b == Blocks.PALE_MOSS_CARPET || b == Blocks.SNOW_BLOCK || b == Blocks.POWDER_SNOW;
     }
 
     // =====================================================================================================
@@ -405,11 +571,19 @@ public final class ActivityRadar extends Module {
             dim = mc.level.dimension();
             events.clear();
             cartLast.clear();
+            cartRun.clear();
+            mobTriggers.clear();
+            mobSight = 48;
+            movers.clear();
+            held.clear();
         }
         long now = System.currentTimeMillis();
         long keep = (long) (memory.get() * 1000);
         while (!events.isEmpty() && now - events.peekFirst().at > keep) events.pollFirst();
         if (minecarts.get()) trackMinecarts(now);
+        watchMovers(now);
+        releaseHeld(now);
+        if (ticks % 20 == 0) measureMobSight();
         if (++ticks % 10 == 0) {
             spots = group(now);
             if (machineAlerts.get()) machineAlerts();
@@ -418,19 +592,46 @@ public final class ActivityRadar extends Module {
         }
     }
 
+    /**
+     * Carts that keep rolling on their own. A mob bumping a resting cart (in a mineshaft, say) shoves it a block or two,
+     * and a cart dropped onto a slope rolls a little and stops; a cart on a rail line keeps going.
+     */
     private void trackMinecarts(long now) {
         for (Entity e : mc.level.entitiesForRendering()) {
             if (!(e instanceof AbstractMinecart cart)) continue;
             if (cart.getFirstPassenger() instanceof Player) continue; // someone riding it: they're visible anyway
             Vec3 p = cart.position();
             Vec3 last = cartLast.put(cart.getId(), p);
-            if (last == null || last.distanceToSqr(p) < 0.01) continue;
+            if (last == null) continue;
+            double step = Math.hypot(p.x - last.x, p.z - last.z);
+            if (step < 0.05) { // stopped (or only falling)
+                cartRun.remove(cart.getId());
+                continue;
+            }
+            double[] run = cartRun.computeIfAbsent(cart.getId(), k -> new double[]{0, now});
+            run[0] += step;
+            if (run[0] < 4 || step < 0.08) continue; // not rolling far or fast enough yet to be more than a shove
             Long at = cartAt.get(cart.getId());
             if (at != null && now - at < 1000) continue; // one mark a second per cart is plenty
             cartAt.put(cart.getId(), now);
             add(cart.blockPosition(), Kind.Minecart);
         }
-        if (cartLast.size() > 2000) cartLast.clear();
+        if (cartLast.size() > 2000) {
+            cartLast.clear();
+            cartRun.clear();
+            cartAt.clear();
+        }
+    }
+
+    /** The farthest a mob is being sent to you: the server's entity range here, past which a mob at a door can't be seen. */
+    private void measureMobSight() {
+        double far = 0;
+        for (Entity e : mc.level.entitiesForRendering()) {
+            if (!(e instanceof net.minecraft.world.entity.Mob)) continue;
+            far = Math.max(far, Math.hypot(e.getX() - mc.player.getX(), e.getZ() - mc.player.getZ()));
+        }
+        // creep down slowly when there are fewer mobs about, never below what mobs are always sent at
+        mobSight = Math.max(32, Math.max(far, mobSight * 0.995));
     }
 
     /** Activity within a few blocks of each other, grouped. */

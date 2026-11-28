@@ -522,11 +522,33 @@ second, how regular (a clock's frequency) and how deep underground. A spot where
 "someone is there now"; a spot running faster than **Machine rate** is alerted as a machine. Anything
 within **Ignore near you** of you is your own doing and left out.
 
+**What mobs and the world do is left out**, so a spot means a person (or a machine someone built):
+
+- blocks broken by mobs: a sheep eating grass, zombies and vindicators breaking doors, the wither, a
+  ravager, silverfish coming out of stone, an arrow shattering a pot, a boat over a lily pad; and
+  blocks that break or grow by themselves (flowers, saplings, mushrooms, vines, berries, frogspawn,
+  sniffer eggs, snow and more, on top of leaves and crops);
+- doors, trapdoors and gates opened by villagers, illagers, piglins or zombies, or flung open by a wind
+  charge. Mobs are only sent to you so far out (less than your render distance on most servers), so
+  past the farthest one you've seen, a door only counts with a player next to it;
+- pressure plates and tripwires set off by a mob, an item or an arrow (and the lamps, doors and
+  dispensers they set off, like a jungle temple's arrow trap), and the plate's release;
+- wooden buttons and targets hit by arrows, levers and buttons hit by wind charges, lightning rods
+  struck by lightning, bells rung by villagers or arrows, chests opened by copper golems;
+- blocks an enderman puts down, an anvil or other falling block landing;
+- a resting minecart shoved by a mob: a cart has to keep rolling for 4 blocks before it counts;
+- a spawner spawning because of you: it needs a player within 16 blocks.
+
 In testing: an observer clock driving a dropper in a sealed room 56 blocks underground was alerted
 from 32 blocks away ("15 redstone, 2 dispenser, 1.7/s"); a door, a lever, a broken wall block and a
 placed block from 30 blocks away each raised "someone is there now"; a wither spawning 60 blocks
 away gave its direction, and a second one heard from another spot was placed at exactly where it
 spawned; a minecart on rails was followed along its track.
+Against the world: 16 lambs grazing a pen 18 blocks away ate 21 grass blocks in a minute and
+nothing was flagged; a door opened next to a villager, a door a wind charge flung open, a door opened
+next to a husk, a plate with an item or a husk on it (and the lamp it lit), a wooden button an arrow
+was shot into, a cart shoved across the floor and a falling anvil landing were all left out, while
+the same door, button and a broken block with nobody near were still flagged.
 
 What reaches you depends on the server: these are vanilla ranges, and plugins can trim them (a server
 can also turn global sound events off).
