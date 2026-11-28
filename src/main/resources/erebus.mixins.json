@@ -15,7 +15,13 @@
     "JigsawAccess$Structure",
     "KeyboardHandlerMixin",
     "MouseHandlerMixin",
-    "StructurePlacementAccess"
+    "EntityEventPacketMixin",
+    "StructurePlacementAccess",
+    "KeyboardHandlerAccess",
+    "MouseHandlerAccess",
+    "ContainerScreenAccess",
+    "XRayBlockStateMixin",
+    "XRayFluidMixin"
   ],
   "injectors": {
     "defaultRequire": 1

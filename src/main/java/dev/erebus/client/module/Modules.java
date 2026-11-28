@@ -20,9 +20,12 @@ public final class Modules {
         modules.register(new LogoutSpots());
         modules.register(new dev.erebus.client.module.render.Freecam());
         modules.register(new dev.erebus.client.module.render.Fullbright());
+        modules.register(new dev.erebus.client.module.render.PlayerESP());
+        modules.register(new dev.erebus.client.module.render.XRay());
         modules.register(new dev.erebus.client.module.combat.AutoSafeAnchor());
         modules.register(new dev.erebus.client.module.combat.AnchorAura());
         modules.register(new dev.erebus.client.module.combat.CrystalAura());
         modules.register(new dev.erebus.client.module.combat.AimAssist());
+        modules.register(new dev.erebus.client.module.combat.AutoTotem());
     }
 }

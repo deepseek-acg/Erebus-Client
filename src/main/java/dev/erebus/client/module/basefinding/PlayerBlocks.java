@@ -42,6 +42,11 @@ public final class PlayerBlocks extends Module {
     public static final int PLACED_COLOR = 0xFFFF00FF;
 
     private static final Set<Block> STRONG = new HashSet<>();
+
+    /** Whether the world never generates this block, so only a player could have put it there (concrete, beacons...). */
+    public static boolean isPlayerOnly(Block b) {
+        return STRONG.contains(b);
+    }
     private static final Set<Block> COMMON = commonDefaults();
 
     private final BoolSetting wrongDimension;

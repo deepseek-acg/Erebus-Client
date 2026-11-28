@@ -58,4 +58,49 @@ public final class InputSim {
         if (bound == null || bound.getType() != InputConstants.Type.KEYSYM) return false;
         return InputConstants.isKeyDown(mc().getWindow(), bound.getValue());
     }
+
+    // ---------------------------------------------------------------- inside screens (inventory)
+
+    /**
+     * Presses and lets go of a binding's key through the game's own key or mouse-button handler, so an open screen
+     * gets it exactly as if it came from the keyboard or mouse (the inventory's swap-to-offhand and number keys work
+     * on the hovered slot). False if the binding has no key.
+     */
+    public static boolean pressInScreen(KeyMapping mapping) {
+        InputConstants.Key key = KeyBindingHelper.getBoundKeyOf(mapping);
+        if (key == null || key.equals(InputConstants.UNKNOWN)) return false;
+        long window = mc().getWindow().handle();
+        if (key.getType() == InputConstants.Type.MOUSE) {
+            var mouse = (dev.erebus.client.mixin.MouseHandlerAccess) mc().mouseHandler;
+            var info = new net.minecraft.client.input.MouseButtonInfo(key.getValue(), 0);
+            mouse.erebus$onButton(window, info, org.lwjgl.glfw.GLFW.GLFW_PRESS);
+            mouse.erebus$onButton(window, info, org.lwjgl.glfw.GLFW.GLFW_RELEASE);
+            return true;
+        }
+        int code = key.getValue();
+        int scan = key.getType() == InputConstants.Type.SCANCODE ? code : org.lwjgl.glfw.GLFW.glfwGetKeyScancode(code);
+        int glfwKey = key.getType() == InputConstants.Type.SCANCODE ? -1 : code;
+        var kb = (dev.erebus.client.mixin.KeyboardHandlerAccess) mc().keyboardHandler;
+        kb.erebus$keyPress(window, org.lwjgl.glfw.GLFW.GLFW_PRESS, new net.minecraft.client.input.KeyEvent(glfwKey, scan, 0));
+        kb.erebus$keyPress(window, org.lwjgl.glfw.GLFW.GLFW_RELEASE, new net.minecraft.client.input.KeyEvent(glfwKey, scan, 0));
+        return true;
+    }
+
+    /** Where the cursor is, in GUI coordinates (what screens use). */
+    public static double[] cursorGui() {
+        var w = mc().getWindow();
+        return new double[]{mc().mouseHandler.xpos() * w.getGuiScaledWidth() / w.getScreenWidth(),
+                mc().mouseHandler.ypos() * w.getGuiScaledHeight() / w.getScreenHeight()};
+    }
+
+    /**
+     * Moves the mouse cursor to a point in GUI coordinates: the real cursor is moved, and the game is told the way a
+     * mouse movement tells it (so the screen sees the new position at once).
+     */
+    public static void moveCursorGui(double gx, double gy) {
+        var w = mc().getWindow();
+        double x = gx * w.getScreenWidth() / w.getGuiScaledWidth(), y = gy * w.getScreenHeight() / w.getGuiScaledHeight();
+        org.lwjgl.glfw.GLFW.glfwSetCursorPos(w.handle(), x, y);
+        ((dev.erebus.client.mixin.MouseHandlerAccess) mc().mouseHandler).erebus$onMove(w.handle(), x, y);
+    }
 }

@@ -73,6 +73,9 @@ obsidian, XP bottles), Armor, and Notifications.
 | Freecam | Render | Flies the camera away from your player while your player stays put. Client-side only. Ported from Nyx. |
 | Fullbright | Render | Lights everything up, like a permanent Night Vision only you see. Client-side only. Ported from Nyx. |
 | Logout Spots | Render | Marks where players were standing when they logged out, with name, health and how long ago. |
+| Player ESP | Render | Boxes, tracers and name tags on other players through walls, with health, distance, ping, held item, armor and totem pops. Ported from Nyx. |
+| X-Ray | Render | Shows only ores, spawners, storage and the blocks you pick; dims ores that are probably fakes on anti-xray servers and outlines the real ones; shades caves, lava and water. Ported from Nyx. |
+| Auto Totem | Combat | Keeps a totem in your offhand with a random, ping-adjusted delay, by real key presses and cursor moves; Smart mode reacts to crystals, anchors, beds, falls and maces, not just low health. Ported from Nyx. |
 | Auto Safe Anchor | Combat | One press: places a respawn anchor where you look, charges it, puts a shield block between you and the blast, detonates it, then turns off. Ported from Mist. |
 | Crystal Aura | Combat | Places and breaks end crystals on nearby opponents as fast as the server answers, sticking to one spot and placing obsidian only when it clearly pays off. Ported from Mist. |
 | Aim Assist | Combat | Pulls your view towards the opponent you're aiming near, on top of your own mouse movement: variable speed with a cap, Gaussian speed and aim-point randomness, friend/team/bot filters, prediction and projectile drop compensation. |
@@ -445,9 +448,61 @@ group). Both are on by default.
 | Aim Assist | Brackets around the target, the point it's aiming at, a guide line from your crosshair and a label with name, health and distance (and a projectile's flight time); pink while tracking, green on target. |
 | Old Chunks | Posts at the corners of nearby old chunks, with a slow sweep across them. |
 | Logout Spots | A ghost of the player where they logged out, with a halo. |
+| Player ESP | A ring under each player that shows their health, and a gold burst when someone pops a totem. |
 | Freecam | While the camera is out: a halo over your body, brackets around it and a line back to it. |
 | Map | A beam and a label over each structure found nearby. |
 | Seed Cracker | The start chunk of each structure it recorded nearby, outlined with what it is, and a label on each End pillar with what it read. |
+
+## Player ESP
+
+Every other player within range gets a box (or just its corners), a tracer and a name tag that stays
+sharp at any distance (drawn as HUD text). The tag can show health, distance, ping, what they hold
+(and whether there's a totem in their offhand), how many armor pieces they wear (and if one is about to
+break), totem pops this life and coordinates. Colors go by distance (red close, green far), health or
+their team color; names on the **Friends** list get their own color, and **Ignore bots** skips players
+missing from the tab list. Pops are counted from the event the server sends when a totem is used, and
+reset when the player dies. With Better visuals, a ring under each player shows their health and a gold
+burst marks a pop. Ported from Nyx; Nyx's on-screen player list is the existing Nearby players HUD
+element.
+
+## Auto Totem
+
+Keeps a totem in your offhand, as you would by hand (ported from Nyx's Smarter AutoTotem):
+
+- **Real input only.** With a totem in the hotbar: its number key, your swap-hands key one tick later
+  (the slot change has to reach the server first, or it would swap what you held before), then back to
+  your slot. Otherwise: your inventory key, the cursor moved over a totem (eased, landing somewhere on
+  the slot rather than its exact centre), your swap-hands key on it, and the inventory key again, each
+  after its own short random pause. Keys go through the game's own key handler, so the inventory gets
+  them exactly as from the keyboard.
+- **Timing.** A new random reaction time for every refill (min to max), with part of your ping taken
+  off (your key press reaches the server that much later anyway), a separate shorter one right after a
+  pop, and no delay at all below **Instant below**.
+- **Smart mode** only swaps a totem in when it's needed: an empty offhand, low health, a pop, or danger.
+  Danger is an end crystal, a charged respawn anchor (outside the Nether) or a bed (outside the
+  Overworld) close enough to take most of your health by the game's own explosion maths, a fall that
+  could, or a player within 5 blocks coming down at you with a mace. Danger skips the delay and takes
+  the fastest way.
+- **Where from.** Inventory first keeps hotbar totems for emergencies; **Keep hotbar slot** keeps a spare
+  in a chosen slot, refilled while it's safe (nobody within 12 blocks, standing still), so the fast way
+  is ready when it matters.
+- **Pop alerts** say how many totems are left.
+
+## X-Ray
+
+Hides every block except the ones you want, through the chunk meshes (hidden blocks have nothing to
+draw and don't cover their neighbours; the ones shown are drawn at full brightness). Ported from Nyx.
+
+- **What shows.** The ores of the dimension you're in (each kind can be turned off), anything on the
+  **Extra blocks** list (ids, comma separated), storage, blocks only players place (Player Blocks' list)
+  and optionally bedrock. Water and lava can be hidden too, and Fullbright comes on with it.
+- **Anti-xray awareness.** Servers running anti-xray (Paper's engine modes) send fake ores in place of
+  buried stone and real ores only where they touch air. X-Ray checks each ore around you: ones with no
+  air, water or lava next to them are dimmed (probably fake there), and exposed ones get an outline in
+  their color (real even with anti-xray, and reachable from a cave). The module list shows how many of
+  each are around.
+- **Empty areas.** Caves, tunnels, lava and water underground are shaded so their shape shows through
+  the rock (below **Max height** in the Overworld).
 
 ## Font
 
