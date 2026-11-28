@@ -87,6 +87,7 @@ public final class PlayerESP extends Module {
         tagRange = add(new NumberSetting("Tag range", "Only tag players this close (blocks); the boxes go farther.", 256, 8, 2048, 8)
                 .unit(" blocks").visibleWhen(tags::get));
         addVisuals("A ring under each player that shows their health, and a burst when someone pops a totem.");
+        addTagSize();
     }
 
     @Override

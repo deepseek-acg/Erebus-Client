@@ -108,9 +108,12 @@ public final class ModuleManager {
         for (Module m : modules) {
             if (!m.isEnabled()) continue;
             try {
+                ui.tagModuleScale = m.tagSize();
                 m.onRenderOverlay(ui);
             } catch (Throwable t) {
                 report(m, t);
+            } finally {
+                ui.tagModuleScale = 1f;
             }
         }
     }

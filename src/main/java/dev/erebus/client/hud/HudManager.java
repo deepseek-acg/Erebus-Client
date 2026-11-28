@@ -49,9 +49,9 @@ public final class HudManager {
         register(new NearbyPlayersElement());
         register(new SuppliesElement());
         register(new ArmorElement());
-        register(new NotificationsElement());
         register(new dev.erebus.client.hud.elements.MinimapElement());
         register(new dev.erebus.client.hud.elements.FinderLegendElement());
+        register(new NotificationsElement()); // last, so toasts are drawn over the other elements
     }
 
     public void register(HudElement e) {

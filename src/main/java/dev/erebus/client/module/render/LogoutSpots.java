@@ -34,7 +34,6 @@ public final class LogoutSpots extends Module {
 
     private final BoolSetting notify = add(new BoolSetting("Chat messages", "Say in chat when someone logs out near you (and when they come back).", true));
     private final BoolSetting tracers = add(new BoolSetting("Tracers", "Draw a line to each logout spot.", false));
-    private final NumberSetting tagScale = add(new NumberSetting("Tag size", "How big the name tags are.", 1.0, 0.5, 2.5, 0.1));
     private final NumberSetting maxAge = add(new NumberSetting("Forget after", "Remove spots after this many minutes (0 = keep until they "
             + "log back in or you leave the server).", 0, 0, 120, 5).unit(" min"));
 
@@ -49,6 +48,7 @@ public final class LogoutSpots extends Module {
     public LogoutSpots() {
         super("Logout Spots", "Marks where players were standing when they logged out.", Category.RENDER);
         addVisuals("A ghost of the player where they logged out, with a halo.");
+        addTagSize();
     }
 
     @Override
@@ -152,12 +152,7 @@ public final class LogoutSpots extends Module {
             if (p == null) continue;
             String detail = Math.round(sp.health) + " hp \u00b7 " + ago(nowMs - sp.time) + " \u00b7 "
                     + Math.round(mc.player.position().distanceTo(sp.box.getBottomCenter())) + "m";
-            float scale = tagScale.floatValue();
-            ui.g.pose().pushMatrix();
-            ui.g.pose().translate(p[0], p[1]);
-            ui.g.pose().scale(scale, scale);
-            ui.worldLabel(dev.erebus.client.render.font.Icon.PLAYER, sp.name, detail, COLOR, 0, -16);
-            ui.g.pose().popMatrix();
+            ui.worldLabel(dev.erebus.client.render.font.Icon.PLAYER, sp.name, detail, COLOR, p[0], p[1] - 16);
         }
     }
 

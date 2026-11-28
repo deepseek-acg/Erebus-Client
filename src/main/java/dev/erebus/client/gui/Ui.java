@@ -168,20 +168,48 @@ public final class Ui {
     }
 
     /** A world label: a dark pill with an optional colour icon, centred on (cx, y). */
+    /** Size of the tags the module being drawn right now asks for (its own Tag size), set around each module's overlay. */
+    public float tagModuleScale = 1f;
+
+    /**
+     * A label floating in the world, centred at {@code cx} with its top at {@code y} (screen units, from
+     * {@link dev.erebus.client.render.Projection#toScreen}). Size, opacity, shrinking with distance, fading near the
+     * crosshair and the detail part follow the World tags settings on the Client page and the module's own Tag size.
+     */
     public void worldLabel(Icon icon, String text, String detail, int color, float cx, float y) {
+        dev.erebus.client.ClientSettings cs = dev.erebus.client.Erebus.client();
+        float scale = cs.tagSize.floatValue() * tagModuleScale;
+        if (cs.tagShrink.get()) {
+            float d = dev.erebus.client.render.Projection.lastDistance();
+            scale *= Math.max(0.6f, 1f - Math.max(0f, d - 24f) / 340f);
+        }
+        float alpha = (float) (cs.tagOpacity.get() / 100.0);
+        // the label is drawn around its bottom centre (where it points at), so it shrinks towards the thing it's over
+        float ax = cx, ay = y + 14;
+        float sw = g.guiWidth() / 2f, sh = g.guiHeight() / 2f;
+        float near = (float) Math.hypot(ax - sw, ay - 7 * scale - sh);
+        if (cs.tagDetails.is("Never") || cs.tagDetails.is("Near crosshair") && near > 90) detail = null;
         int tw = width(text) + (detail == null ? 0 : width(detail) + 6);
         int w = tw + (icon != null ? 18 : 12);
-        int x = Math.round(cx - w / 2f);
-        int yy = Math.round(y);
-        round(x, yy, w, 14, 7, 0xB8101016);
-        border(x, yy, w, 14, 7, dev.erebus.client.util.Colors.withAlpha(color, 0x90));
+        if (cs.tagCrosshairFade.get()) {
+            float reach = Math.max(w * scale / 2f, 7 * scale) + 10;
+            if (near < reach) alpha *= 0.25f + 0.75f * near / reach;
+        }
+        if (alpha <= 0.02f) return;
+        g.pose().pushMatrix();
+        g.pose().translate(ax, ay);
+        g.pose().scale(scale, scale);
+        int x = Math.round(-w / 2f), yy = -14;
+        round(x, yy, w, 14, 7, dev.erebus.client.util.Colors.mulAlpha(0xB8101016, alpha));
+        border(x, yy, w, 14, 7, dev.erebus.client.util.Colors.mulAlpha(dev.erebus.client.util.Colors.withAlpha(color, 0x90), alpha));
         int tx = x + 6;
         if (icon != null) {
-            icon(icon, tx, yy + 3, 8, color);
+            icon(icon, tx, yy + 3, 8, dev.erebus.client.util.Colors.mulAlpha(color, alpha));
             tx += 12;
         }
-        tx += text(text, tx, yy + 3, theme.text());
-        if (detail != null) text(detail, tx + 6, yy + 3, dev.erebus.client.util.Colors.mulAlpha(theme.text(), 0.6f));
+        tx += text(text, tx, yy + 3, dev.erebus.client.util.Colors.mulAlpha(theme.text(), alpha));
+        if (detail != null) text(detail, tx + 6, yy + 3, dev.erebus.client.util.Colors.mulAlpha(theme.text(), 0.6f * alpha));
+        g.pose().popMatrix();
     }
 
     /** Y offset that vertically centers a line of text in a box of height {@code h}. */

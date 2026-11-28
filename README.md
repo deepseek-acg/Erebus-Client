@@ -45,7 +45,34 @@ To start a development client:
 - **Theme** starts from a preset (Void, Abyss, Ember, Mono). You can then change every color with an
   HSV picker or hex code, plus corner radius, panel opacity, drop shadow, background blur, text
   shadow and animations. Changes apply live.
-- **Client** has the menu scale, menu keybind and general preferences.
+- **Messages** keeps everything the modules told you this session (finds, alerts, seeds,
+  triangulated withers), newest first, grouped by module, with buttons to copy coordinates, the seed
+  or the whole message. The sidebar shows how many came in since you last looked.
+- **Client** has the menu scale, menu keybind and general preferences, the World tags settings and
+  Also in chat.
+
+### Messages and notifications
+
+Nothing goes to Minecraft's chat. Every message appears as a notification in the corner (the
+Notifications HUD element), wrapped over a few lines and staying up longer the longer it is, and is
+kept on the Messages page. The Notifications element has the toast duration, message width and how
+many lines of a long message to show. **Also in chat** on the Client page puts messages in chat too,
+only for you.
+
+### World tags
+
+The labels floating in the world (Light Finder's lights, Activity Radar's spots, Stash ESP's bases,
+Seed Cracker's structures, players, waypoints, logout spots, the combat modules' targets) all follow
+the **World tags** settings on the Client page:
+
+- **Tag size** (0.85x by default) and **Tag opacity**.
+- **Shrink with distance**: far tags are drawn smaller, down to 60% at 160 blocks.
+- **Fade near crosshair**: a tag right where you're looking fades, so it doesn't hide what you aim at.
+- **Tag details**: the second part (distance, counts, how long ago) always, only for tags near the
+  crosshair, or never.
+
+Each module that draws tags also has its own **Tag size** (under Tags in its settings), on top of the
+client-wide one, to make one module's tags smaller than the rest.
 
 ### HUD editor
 
@@ -59,7 +86,7 @@ window size or GUI scale changes.
 
 Built-in elements: Watermark, Module list, Coordinates (with Nether/Overworld conversion and
 facing), Server info (FPS, ping, speed), Nearby players, Supplies (totems, crystals, gapples,
-obsidian, XP bottles), Armor, and Notifications.
+obsidian, XP bottles), Armor, Minimap, Finder legend and Notifications (drawn over the others).
 
 ## Modules
 
@@ -133,7 +160,7 @@ back and looks back only once no new anchor has followed for a moment, not after
 
 **Trying them in singleplayer.** Crystal Aura and Anchor Aura only go for other players unless
 "Target mobs" is on, and a singleplayer world has none, so turn it on and use a hostile mob (a zombie
-with no AI makes a good dummy). Turning either on in singleplayer without it says so in chat, and
+with no AI makes a good dummy). Turning either on in singleplayer without it says so in a message, and
 the module list shows why either is idle ("no players: turn on Target mobs", "no crystals", "no
 glowstone in your hotbar", "no good spot"...).
 
@@ -552,6 +579,38 @@ the same door, button and a broken block with nobody near were still flagged.
 
 What reaches you depends on the server: these are vanilla ranges, and plugins can trim them (a server
 can also turn global sound events off).
+
+## Player Blocks: what counts as natural
+
+Player Blocks flags two things: blocks the world never generates (concrete, shulker boxes, mineral
+blocks, redstone parts...) and building materials (planks, glass, terracotta, packed ice, snow
+blocks...) where nature wouldn't put them. To keep the second list honest it checks, for each block:
+
+- **The biome, and the biomes a few blocks around it.** Each block's biome is picked with some jitter
+  at biome borders, terracotta bands and snow run a little past them, and icebergs spill out of
+  frozen oceans onto the shore, so terracotta counts as natural within 8 blocks of a badlands biome
+  and ice within 16 of a cold one. Mossy cobblestone is natural in old-growth taiga (its boulders),
+  cobblestone touching lava or water is natural (they flowed together).
+- **Whether the chunk's surroundings have loaded.** The client reads a chunk it hasn't got as plains,
+  and a village's outer houses can be in view while its bell isn't, so building materials are only
+  judged in chunks with everything within 2 chunks loaded (at the edge of your render distance they
+  wait until you come closer).
+- **Natural structures, at the right height.** Villages, mineshafts (by their supports: fences two
+  high with planks across, which also finds badlands mineshafts at the surface), strongholds,
+  ancient cities (deepslate bricks and tiles together), trial chambers, temples, igloos, ruins,
+  bastions, End cities and mansions (by their illagers) excuse building materials around them, but
+  only within 24 blocks of the height they were found at: a base on the surface above a mineshaft is
+  still a base.
+- **Never-natural blocks that structures use anyway**, found by reading every structure the game
+  has: trial chambers' white and red concrete, ancient cities' redstone blocks, comparators, targets
+  and note blocks, mansions' diamond and lapis blocks, damaged anvils in mansions and trail ruins,
+  bastions' quartz and End cities' ender chests. Each is only excused near its own structure.
+
+In testing on a dedicated server, the badlands, eroded and wooded badlands (and a badlands
+mineshaft), frozen ocean icebergs, ice spikes, snowy slopes over a trial chamber and old-growth
+taiga showed nothing, where before they showed hundreds of terracotta blocks, packed ice and
+concrete; orange terracotta, packed ice and snow blocks placed in plains above a mineshaft were
+flagged.
 
 ## Player ESP
 

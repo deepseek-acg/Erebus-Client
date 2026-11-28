@@ -258,6 +258,7 @@ public abstract class AnchorSequence extends Module {
         shieldColor = add(new ColorSetting("Shield color", 0xFFFFD24A).visibleWhen(showTarget::get));
         addVisuals("Shows each step at the anchor (placing, charging with its charges lit, shielding, detonating), the shield block "
                 + "to come, the blast radius, where it's aiming and who it's for.");
+        addTagSize();
     }
 
     /** The opponent this sequence is for, for the visuals (Anchor Aura has one). */

@@ -139,6 +139,7 @@ public final class MapModule extends Module {
                     .visibleWhen(showPredicted::get)));
         }
         addVisuals("A beam and a label over each structure it found nearby.");
+        addTagSize();
     }
 
     public static MapModule get() {

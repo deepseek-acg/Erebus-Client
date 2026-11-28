@@ -65,6 +65,7 @@ public final class Freecam extends Module {
                 + "limited by your render distance.", 128, 16, 512, 8).visibleWhen(() -> spectate.get() && !unlimited.get()));
         instance = this;
         addVisuals("While the camera is out, marks your body: a halo over it, brackets around it and a line back to it.");
+        addTagSize();
     }
 
     @Override

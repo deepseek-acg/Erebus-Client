@@ -181,6 +181,7 @@ public final class LightFinder extends Module {
         showLit = add(new BoolSetting("Show lit space", "Shade the unexplained lit space in marked chunks.", true));
         range = add(new NumberSetting("Range", "How far away things are drawn.", 160, 32, 512, 16).unit(" blocks"));
         addVisuals("Lights glow with a soft halo, marked areas get a beam and a label with what was found, and new lights pulse.");
+        addTagSize();
         instance = this;
         ClientChunkEvents.CHUNK_LOAD.register((level, chunk) -> {
             LightFinder m = instance;
@@ -641,8 +642,8 @@ public final class LightFinder extends Module {
         if (last != null && now - last < 30_000) return;
         freshNotified.put(area, now);
         int dist = (int) Math.sqrt(mc.player.blockPosition().distSqr(pos));
-        Notifications.push(name, what + " at " + pos.getX() + " " + pos.getY() + " " + pos.getZ() + " · " + dist + "m", Notifications.Kind.WARNING);
-        Chat.info(what + " at " + pos.getX() + " " + pos.getY() + " " + pos.getZ() + " (" + dist + "m away): someone is there now.");
+        alert(what + " at " + pos.getX() + " " + pos.getY() + " " + pos.getZ() + " (" + dist + "m away): someone is there now.",
+                Chat.coords(pos.getX(), pos.getY(), pos.getZ()));
     }
 
     private static String name(BlockState st) {

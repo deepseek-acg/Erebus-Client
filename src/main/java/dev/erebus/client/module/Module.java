@@ -58,6 +58,21 @@ public abstract class Module {
         return visualsSetting != null && visualsSetting.get() && dev.erebus.client.Erebus.client().betterVisuals.get();
     }
 
+    private dev.erebus.client.setting.NumberSetting tagSizeSetting;
+
+    /** Adds a Tag size for the labels this module floats in the world (on top of the client-wide one). */
+    protected void addTagSize() {
+        group("Tags");
+        tagSizeSetting = add(new dev.erebus.client.setting.NumberSetting("Tag size", "How big this module's labels in the world are, "
+                + "on top of the Tag size on the Client page (which also has opacity, fading and when to show details).", 1.0, 0.4, 2.0, 0.05)
+                .unit("x"));
+    }
+
+    /** This module's own tag size (1 when it has none). */
+    public float tagSize() {
+        return tagSizeSetting == null ? 1f : tagSizeSetting.floatValue();
+    }
+
     /** Settings added after this call are listed under a section with this title. */
     protected void group(String title) {
         currentGroup = title;
@@ -124,8 +139,14 @@ public abstract class Module {
         return info;
     }
 
-    protected void chat(String message) {
-        Chat.info(message);
+    /** A message from this module: a toast, and kept on the dashboard's Messages page. */
+    protected void chat(String message, dev.erebus.client.notify.Notifications.Action... actions) {
+        Chat.info(name, message, actions);
+    }
+
+    /** A message worth noticing (a find, someone nearby), from this module. */
+    protected void alert(String message, dev.erebus.client.notify.Notifications.Action... actions) {
+        Chat.alert(name, message, actions);
     }
 
     protected void onEnable() {

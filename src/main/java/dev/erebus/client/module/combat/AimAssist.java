@@ -180,6 +180,7 @@ public final class AimAssist extends Module {
         showFov = add(new BoolSetting("Show FOV", "Draw the cone as a circle around your crosshair.", false));
         addVisuals("Brackets around the target with the point it's aiming at, a guide line from your crosshair, and a label with their "
                 + "name, health and distance; green when your crosshair is on them.");
+        addTagSize();
         instance = this;
     }
 

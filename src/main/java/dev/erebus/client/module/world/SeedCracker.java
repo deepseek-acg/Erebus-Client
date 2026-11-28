@@ -11,10 +11,6 @@ import dev.erebus.client.seed.StructureScanner;
 import dev.erebus.client.setting.BoolSetting;
 import dev.erebus.client.util.Chat;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
-import net.minecraft.network.chat.ClickEvent;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.HoverEvent;
-import net.minecraft.network.chat.TextColor;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.BiomeManager;
@@ -104,6 +100,7 @@ public final class SeedCracker extends Module {
             if (m != null && m.isEnabled() && level.dimension() == Level.OVERWORLD) m.queue.add(chunk.getPos());
         });
         addVisuals("Outlines the start chunk of each structure it recorded nearby, with what it is, and labels each End pillar with what it read.");
+        addTagSize();
     }
 
     /**
@@ -469,8 +466,8 @@ public final class SeedCracker extends Module {
                 : f.kind() == StructureScanner.Kind.MINESHAFT && !f.piece().contains("-") ? " (" + f.piece() + ")" : "";
         String detail = f.kind().label + piece + " at " + m.getX() + ", " + m.getZ() + " (" + spreads + " structures, "
                 + (data.counted() - spreads) + " treasures)";
-        Notifications.push(name, detail, Notifications.Kind.INFO);
         if (announce.get()) chat("Recorded " + detail + ".");
+        else Notifications.push(name, detail, Notifications.Kind.INFO);
     }
 
     private String status() {
@@ -646,7 +643,6 @@ public final class SeedCracker extends Module {
             if (badClues == misfits.size() && verified(d, world, usedPillars)) {
                 d.worldSeed = world;
                 d.save();
-                Notifications.push(name, "Seed found: " + world, Notifications.Kind.SUCCESS);
                 seedMessage(world, (int) d.counted(), usedPillars);
                 if (!ignored.isEmpty()) chat("Ignored " + (ignored.size() == 1 ? "1 structure that doesn't" : ignored.size() + " structures that don't")
                         + " fit the seed (probably misread): " + String.join("; ", ignored) + ".");
@@ -687,7 +683,6 @@ public final class SeedCracker extends Module {
         if (world != null) {
             d.worldSeed = world;
             cachedKey = null; // the salts and seed the map uses changed
-            Notifications.push(name, "Seed found: " + world, Notifications.Kind.SUCCESS);
             seedMessage(world, (int) d.counted(), true);
         }
         d.save();
@@ -806,12 +801,8 @@ public final class SeedCracker extends Module {
     }
 
     private void seedMessage(long seed, int count, boolean pillars) {
-        if (mc.gui == null) return;
-        Component seedText = Component.literal(String.valueOf(seed)).withStyle(s -> s.withColor(TextColor.fromRgb(0x7CE0B0)).withUnderlined(true)
-                .withClickEvent(new ClickEvent.CopyToClipboard(String.valueOf(seed)))
-                .withHoverEvent(new HoverEvent.ShowText(Component.literal("Click to copy"))));
-        Chat.info("Seed found from " + count + " structures" + (pillars ? ", the End pillars" : "") + " and the server's hashed seed:");
-        mc.gui.getChat().addMessage(Component.literal("  ").append(seedText));
+        Chat.success(name, "Seed found: " + seed + ", from " + count + " structures" + (pillars ? ", the End pillars" : "")
+                + " and the server's hashed seed. Copy it from the Messages page or with Copy seed here.", Chat.copy("Copy seed", String.valueOf(seed)));
     }
 
     private void copySeed() {
@@ -821,7 +812,7 @@ public final class SeedCracker extends Module {
         }
         long s = data.worldSeed != null ? data.worldSeed : data.structureSeed;
         mc.keyboardHandler.setClipboard(String.valueOf(s));
-        chat("Copied " + (data.worldSeed != null ? "the seed" : "the structure seed") + " " + s + ".");
+        Notifications.success("Copied", (data.worldSeed != null ? "the seed " : "the structure seed ") + s);
     }
 
     private void forget() {

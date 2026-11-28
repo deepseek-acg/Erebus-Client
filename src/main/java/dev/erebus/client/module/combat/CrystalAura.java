@@ -317,6 +317,7 @@ public final class CrystalAura extends Module {
         obsidianColor = add(new ColorSetting("Obsidian color", 0xFF6B8CFF).visibleWhen(showTarget::get));
         addVisuals("Shows the crystal spot it's locked on (with the crystal's reach and blast radius), the obsidian it's placing, the "
                 + "opponent it's for and the damage the spot should do.");
+        addTagSize();
 
         if (!hooked) {
             hooked = true;

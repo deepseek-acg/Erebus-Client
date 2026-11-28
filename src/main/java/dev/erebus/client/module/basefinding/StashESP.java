@@ -141,6 +141,7 @@ public final class StashESP extends Module {
                 .visibleWhen(() -> notify.get() && clusterAlerts.get()));
         logFinds = add(new BoolSetting("Log to file", "Write every alert to .minecraft/erebus/finds.txt with time, dimension, coordinates and counts.", true));
         addVisuals("A shape for each kind of find (rings over chests, halos over villagers, a spinning cage around spawners, orbits around ender chests...), and a beam with a label over each base and stash it alerted about.");
+        addTagSize();
     }
 
     public static StashESP get() {

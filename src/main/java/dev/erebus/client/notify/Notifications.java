@@ -6,35 +6,71 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-/** Short-lived toasts shown by the Notifications HUD element. */
+/**
+ * Everything the client tells you: short toasts (a module turned on) and messages (a find, a seed, an alert), shown by
+ * the Notifications HUD element. Messages are also kept, newest first, for the dashboard's Messages page. Nothing goes
+ * to Minecraft's chat.
+ */
 public final class Notifications {
     public enum Kind { INFO, SUCCESS, WARNING, ENABLED, DISABLED }
+
+    /** A button offered with a message on the Messages page, e.g. Copy seed. */
+    public record Action(String label, Runnable run) {
+    }
 
     public static final class Entry {
         public final String title;
         public final String detail;
+        /** The full text of a message, wrapped on several lines (null for a one-line toast). */
+        public final String body;
         public final Kind kind;
+        public final List<Action> actions;
         public final long created = System.currentTimeMillis();
+        final long life;
         public final Anim slide = new Anim(0f, 16f);
         public final Anim y = new Anim(-1f, 16f);
 
-        Entry(String title, String detail, Kind kind) {
+        Entry(String title, String detail, String body, Kind kind, List<Action> actions, long life) {
             this.title = title;
             this.detail = detail;
+            this.body = body;
             this.kind = kind;
+            this.actions = actions;
+            this.life = life;
             slide.target(1f);
         }
     }
 
     private static final int MAX = 6;
+    private static final int HISTORY_MAX = 300;
     private static final List<Entry> ENTRIES = new ArrayList<>();
+    private static final List<Entry> HISTORY = new ArrayList<>();
     private static long durationMs = 2500;
+    private static int unread;
 
     private Notifications() {
     }
 
+    /** A one-line toast: {@code title} and a short {@code detail} after it. Not kept. */
     public static synchronized void push(String title, String detail, Kind kind) {
-        ENTRIES.add(0, new Entry(title, detail, kind));
+        add(new Entry(title, detail, null, kind, List.of(), durationMs));
+    }
+
+    /**
+     * A message: {@code title} (usually the module) over {@code text}, which can be long and is wrapped. It stays up a
+     * little longer the longer it is, and is kept on the Messages page with its {@code actions}.
+     */
+    public static synchronized void message(String title, String text, Kind kind, Action... actions) {
+        long life = Math.max(durationMs, Math.min(15_000, 4_000 + text.length() * 45L));
+        Entry e = new Entry(title, null, text, kind, List.of(actions), life);
+        add(e);
+        HISTORY.add(0, e);
+        while (HISTORY.size() > HISTORY_MAX) HISTORY.remove(HISTORY.size() - 1);
+        unread++;
+    }
+
+    private static void add(Entry e) {
+        ENTRIES.add(0, e);
         while (ENTRIES.size() > MAX) ENTRIES.remove(ENTRIES.size() - 1);
     }
 
@@ -60,11 +96,30 @@ public final class Notifications {
         Iterator<Entry> it = ENTRIES.iterator();
         while (it.hasNext()) {
             Entry e = it.next();
-            if (now - e.created > durationMs) {
+            if (now - e.created > e.life) {
                 e.slide.target(0f);
                 if (e.slide.get() <= 0.01f) it.remove();
             }
         }
         return new ArrayList<>(ENTRIES);
+    }
+
+    /** Messages kept so far, newest first. */
+    public static synchronized List<Entry> history() {
+        return new ArrayList<>(HISTORY);
+    }
+
+    public static synchronized void clearHistory() {
+        HISTORY.clear();
+        unread = 0;
+    }
+
+    /** Messages that came in since the Messages page was last looked at. */
+    public static synchronized int unread() {
+        return unread;
+    }
+
+    public static synchronized void markRead() {
+        unread = 0;
     }
 }

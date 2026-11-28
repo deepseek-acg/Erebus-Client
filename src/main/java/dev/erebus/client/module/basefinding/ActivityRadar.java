@@ -64,26 +64,28 @@ import java.util.Map;
 public final class ActivityRadar extends Module {
     /** What happened, and whether it means a person was there doing it (as opposed to a machine running). */
     enum Kind {
-        Dispense("dispenser", 0xFFFFB347, false),
-        Piston("piston", 0xFF9CA3AF, false),
-        Redstone("redstone", 0xFFFF4D4D, false),
-        Crafter("crafter", 0xFFFFD27A, false),
-        Spawner("spawner", 0xFFB46CFF, false),
-        Minecart("minecart", 0xFF7DD3FC, false),
-        Note("note block", 0xFF67E8F9, false),
-        Storage("storage opened", 0xFFFFC21A, true),
-        Door("door", 0xFFE0B48C, true),
-        Switch("lever or button", 0xFFFF7A59, true),
-        Workstation("workstation", 0xFF4ADE80, true),
-        Mining("block broken", 0xFFF472B6, true),
-        Building("block placed", 0xFF34D399, true);
+        Dispense("dispenser", "dispensers", 0xFFFFB347, false),
+        Piston("piston", "pistons", 0xFF9CA3AF, false),
+        Redstone("redstone", "redstone", 0xFFFF4D4D, false),
+        Crafter("crafter", "crafters", 0xFFFFD27A, false),
+        Spawner("spawner", "spawners", 0xFFB46CFF, false),
+        Minecart("minecart", "minecarts", 0xFF7DD3FC, false),
+        Note("note block", "note blocks", 0xFF67E8F9, false),
+        Storage("storage opened", "storage opened", 0xFFFFC21A, true),
+        Door("door", "doors", 0xFFE0B48C, true),
+        Switch("lever or button", "levers or buttons", 0xFFFF7A59, true),
+        Workstation("workstation", "workstations", 0xFF4ADE80, true),
+        Mining("block broken", "blocks broken", 0xFFF472B6, true),
+        Building("block placed", "blocks placed", 0xFF34D399, true);
 
         final String label;
+        final String plural;
         final int color;
         final boolean person;
 
-        Kind(String label, int color, boolean person) {
+        Kind(String label, String plural, int color, boolean person) {
             this.label = label;
+            this.plural = plural;
             this.color = color;
             this.person = person;
         }
@@ -180,6 +182,7 @@ public final class ActivityRadar extends Module {
         tracers = add(new BoolSetting("Tracers", "A line to spots where someone is at work.", true));
         range = add(new NumberSetting("Range", "How far away spots are labelled.", 256, 32, 1024, 16).unit(" blocks"));
         addVisuals("Events ripple out as they happen, busy machines pulse, and bearings to global events are drawn as long rays.");
+        addTagSize();
         instance = this;
         ActivityEvents.onLevel((type, pos, data, global) -> {
             ActivityRadar m = instance;
@@ -503,22 +506,24 @@ public final class ActivityRadar extends Module {
         int yaw = (int) Math.round(Math.toDegrees(Math.atan2(-flat.x, flat.z)));
         if (exact) {
             fixes.put(type, Vec3.atCenterOf(pos));
-            Chat.info(what + " right here, at " + pos.getX() + " " + pos.getY() + " " + pos.getZ() + ".");
+            alert(what + " right here, at " + pos.getX() + " " + pos.getY() + " " + pos.getZ() + ".", Chat.coords(pos.getX(), pos.getY(), pos.getZ()));
             return;
         }
         Vec3 fix = triangulate(type);
-        Notifications.push(name, what + " towards " + compass(flat) + " (" + yaw + "°)", Notifications.Kind.WARNING);
+        String towards = what + " towards " + compass(flat) + " (yaw " + yaw + "°).";
         if (fix != null) {
             Vec3 old = fixes.put(type, fix);
             if (old == null || old.distanceTo(fix) > 64) {
                 int dist = (int) Math.round(Math.hypot(fix.x - me.x, fix.z - me.z));
-                Chat.info(what + " again: its direction from here and from earlier cross near " + (int) fix.x + " " + (int) fix.z
-                        + " (" + dist + " blocks away). Marked on the map.");
+                alert(towards + " Its direction from here and from earlier cross near " + (int) fix.x + " " + (int) fix.z
+                        + " (" + dist + " blocks away). Marked on the map.", Chat.copy("Copy coordinates", (int) fix.x + " ~ " + (int) fix.z));
                 if (MapStore.ready()) MapStore.addAlert(new MapStore.Mark((int) fix.x, 64, (int) fix.z, "base", what + " (triangulated)", 0));
+            } else {
+                alert(towards + " Same place as before, near " + (int) fix.x + " " + (int) fix.z + ".");
             }
         } else {
-            Chat.info(what + " towards " + compass(flat) + " (yaw " + yaw + "°). If it happens again (a wither farm), move a few hundred "
-                    + "blocks sideways first and the two directions will place it.");
+            alert(towards + " If it happens again (a wither farm), move a few hundred blocks sideways first and the two directions "
+                    + "will place it.");
         }
     }
 
@@ -716,7 +721,7 @@ public final class ActivityRadar extends Module {
         List<Map.Entry<Kind, Integer>> l = new ArrayList<>(s.counts.entrySet());
         l.sort((a, b) -> b.getValue() - a.getValue());
         List<String> parts = new ArrayList<>();
-        for (int i = 0; i < Math.min(3, l.size()); i++) parts.add(l.get(i).getValue() + " " + l.get(i).getKey().label);
+        for (int i = 0; i < Math.min(3, l.size()); i++) parts.add(l.get(i).getValue() + " " + (l.get(i).getValue() == 1 ? l.get(i).getKey().label : l.get(i).getKey().plural));
         return String.join(", ", parts);
     }
 
@@ -732,8 +737,8 @@ public final class ActivityRadar extends Module {
             int dist = (int) Math.sqrt(mc.player.blockPosition().distSqr(c));
             String detail = describe(s) + String.format(Locale.ROOT, ", %.1f/s", s.rate) + (s.hz > 0 ? String.format(Locale.ROOT, " (%.1f Hz)", s.hz) : "")
                     + (s.depth > 3 ? ", " + s.depth + " blocks underground" : "");
-            Notifications.push(name, "Machine running at " + c.getX() + " " + c.getZ() + " · " + dist + "m", Notifications.Kind.INFO);
-            Chat.info("Machine running at " + c.getX() + " " + c.getY() + " " + c.getZ() + " (" + dist + "m): " + detail + ".");
+            chat("Machine running at " + c.getX() + " " + c.getY() + " " + c.getZ() + " (" + dist + "m): " + detail + ".",
+                    Chat.coords(c.getX(), c.getY(), c.getZ()));
         }
     }
 
@@ -754,8 +759,7 @@ public final class ActivityRadar extends Module {
             default -> "Activity";
         };
         String where = e.pos.getX() + " " + e.pos.getY() + " " + e.pos.getZ();
-        Notifications.push(name, what + " at " + where + " · " + dist + "m", Notifications.Kind.WARNING);
-        Chat.info(what + " at " + where + " (" + dist + "m away): someone is there now.");
+        alert(what + " at " + where + " (" + dist + "m away): someone is there now.", Chat.coords(e.pos.getX(), e.pos.getY(), e.pos.getZ()));
     }
 
     // =====================================================================================================

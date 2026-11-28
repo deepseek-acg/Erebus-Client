@@ -83,8 +83,7 @@ public final class BaseFinds {
         int x = (int) Math.floor(c.x), y = (int) area.minY, z = (int) Math.floor(c.z);
         int dist = mc.player != null ? (int) Math.sqrt(mc.player.position().distanceToSqr(c.x, mc.player.getY(), c.z)) : 0;
 
-        Notifications.push(kind + " found", x + " " + z + " · " + dist + "m", Notifications.Kind.WARNING);
-        Chat.info(kind + " found: " + what + " at " + x + " " + y + " " + z + " (" + dist + "m). Highlight it from the map (M).");
+        Chat.alert(kind + " found", what + " at " + x + " " + y + " " + z + " (" + dist + "m). Highlight it from the map (M).", Chat.coords(x, y, z));
         MapStore.addAlert(new MapStore.Mark(x, y, z, kind.toLowerCase(Locale.ROOT).contains("stash") ? "stash" : "base",
                 kind + ": " + what, 0));
         if (log) log(kind, f.dim(), x, y, z, details);

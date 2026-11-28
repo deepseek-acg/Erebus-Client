@@ -54,6 +54,7 @@ public final class DashboardScreen extends UiScreen {
     public DashboardScreen() {
         super(Component.translatable("erebus.screen.dashboard"));
         for (Category c : Category.values()) modulePages.add(new ModulesPage(this, c));
+        clientPages.add(new MessagesPage(this));
         clientPages.add(new HudPage(this));
         clientPages.add(new ThemePage(this));
         clientPages.add(new ClientPage(this));
