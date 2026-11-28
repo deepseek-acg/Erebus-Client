@@ -114,7 +114,8 @@ public final class NotificationsElement extends HudElement {
             case WARNING -> Theme.WARN;
             default -> ui.theme.accent();
         };
-        ui.round(x, y, l.w, l.h, r, ui.theme.background());
+        // solid, so a toast cleanly covers whatever HUD element it's drawn over instead of mixing text with it
+        ui.round(x, y, l.w, l.h, r, dev.erebus.client.util.Colors.withAlpha(ui.theme.background(), 0xFF));
         ui.border(x, y, l.w, l.h, r, ui.theme.border());
         ui.rect(x, y + 3, 2, l.h - 6, accent);
         // how long it has left, as a thin line along the bottom

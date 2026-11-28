@@ -2,6 +2,15 @@ Erebus for Minecraft **1.21.11** (Fabric).
 
 **Install:** put the `erebus-<version>.jar` below in your `mods` folder together with [Fabric API](https://modrinth.com/mod/fabric-api) for 1.21.11. Requires Fabric Loader 0.20+ and Java 21. Open the dashboard with Right Shift.
 
+### New in 0.7.6
+- **No more text running into other text**: every dashboard page, every module's settings at every scroll position, the HUD at GUI scales 2, 3 and 4, the HUD editor and the map were checked for text drawn over other text or controls. Fixed:
+  - HUD elements no longer overlap each other or the hotbar, hearts, food bar, potion icons or chat box: one that would slides out of the way (Keep HUD elements apart, on the Client page), and back when there's room.
+  - The Armor element's durability percentages ran into each other.
+  - Notifications now have a solid background, so a toast over another element doesn't mix the two texts.
+  - World tags (lights, activity, bases, waypoints...) that would land on each other stack upwards, with a thin line to their spot.
+  - Module action buttons (the Map module's) wrap onto a second row instead of being cut off at the edge.
+  - A text field that isn't being edited ends long text with "…" instead of cutting it off mid-letter.
+
 ### New in 0.7.5
 - **XP Optimizer** (Player): throws experience bottles with a human click rhythm (a click speed wandering between Min and Max CPS, Gaussian jitter on every gap) and stops the moment the XP in the air and on the ground will finish repairing your mending gear, so no bottle is wasted. Hold right-click with bottles and it does the clicking, or bind it to a key and it switches to bottles, looks down, throws until repaired and puts everything back. Real key presses only. A repair bar under the crosshair shows durability, XP on its way and what's still needed.
 - **New HUD elements**: Compass (a heading tape with waypoints and finds), Rotation (exact yaw and pitch on a dial, and how far off the nearest axis you are: for highways), Hunger (food with the hidden saturation, and when regen or sprinting stops), Effects (potion timers with bars), Target (your opponent's face, health, absorption, pops, totem, armor wear), Speed graph and World info (time, moon, biome, light and mob spawning, chunk and region). The presets turn on the fitting ones.

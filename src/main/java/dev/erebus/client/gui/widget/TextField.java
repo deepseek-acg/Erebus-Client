@@ -100,7 +100,9 @@ public final class TextField extends Widget {
             if (focused && allSelected && !text.isEmpty()) {
                 ui.rect(x + left - scrollX, ty - 1, ui.width(text), 10, Colors.withAlpha(ui.theme.accent(), 0x66));
             }
-            ui.text(text, x + left - scrollX, ty, ui.theme.text());
+            // while not being edited, text that doesn't fit ends in "…" rather than being cut off mid-letter
+            String shown = focused ? text : ui.ellipsize(text, innerW - 2);
+            ui.text(shown, x + left - (focused ? scrollX : 0), ty, ui.theme.text());
             if (text.isEmpty()) ui.text(placeholder, x + left, ty, Colors.mulAlpha(ui.theme.dim(), 0.6f));
         }
         if (focused && ((System.currentTimeMillis() - focusTime) / 530) % 2 == 0) {

@@ -32,6 +32,8 @@ public final class ArmorElement extends HudElement {
         return previewStacks;
     }
 
+    private int slot = 20;
+
     @Override
     protected int[] measure(Ui ui, boolean preview) {
         LocalPlayer p = ui.mc.player;
@@ -42,7 +44,9 @@ public final class ArmorElement extends HudElement {
         }
         if (!any && !preview) return new int[]{0, 0};
         int pad = background.get() ? 3 : 0;
-        return new int[]{4 * 20 - 4 + pad * 2, 16 + (percent.get() ? 10 : 0) + pad * 2};
+        // each piece gets room for its percentage ("100%" is wider than an item), so they don't run into each other
+        slot = percent.get() ? Math.max(20, ui.width("100%") + 4) : 20;
+        return new int[]{4 * slot - 4 + pad * 2, 16 + (percent.get() ? 10 : 0) + pad * 2};
     }
 
     @Override
@@ -51,7 +55,7 @@ public final class ArmorElement extends HudElement {
         if (background.get()) ui.round(x, y, width, height, ui.smallRadius(), ui.theme.hudBackground());
         for (int i = 0; i < 4; i++) {
             ItemStack s = stacks[i];
-            int ix = x + pad + i * 20;
+            int ix = x + pad + i * slot + (slot - 20) / 2; // centred in its slot
             int iy = y + pad;
             if (s.isEmpty()) {
                 ui.round(ix + 2, iy + 2, 12, 12, 2, 0x22FFFFFF);

@@ -39,8 +39,12 @@ public final class ClientSettings {
             "Messages (finds, alerts, seeds) normally only show as Erebus notifications and on the Messages page. This also puts "
             + "them in Minecraft's chat, only for you.", false);
 
+    public final BoolSetting hudApart = new BoolSetting("Keep HUD elements apart",
+            "When a HUD element would cover another one, or the hotbar, hearts, food, potion icons or the chat box, it slides out of "
+            + "the way (away from its screen edge) and back when there's room again.", true);
+
     public List<Setting<?>> interfaceSettings() {
-        return List.of(uiScale, menuKeyCloses, clickSounds, rememberPage, betterVisuals);
+        return List.of(uiScale, menuKeyCloses, clickSounds, rememberPage, betterVisuals, hudApart);
     }
 
     public List<Setting<?>> messageSettings() {

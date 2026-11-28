@@ -43,6 +43,7 @@ public final class Ui {
         long now = System.nanoTime();
         dt = lastFrame == 0 ? 0f : Math.min(0.1f, (now - lastFrame) / 1_000_000_000f);
         lastFrame = now;
+        tagsThisFrame.clear();
     }
 
     // ---------------------------------------------------------------- focus & capture
@@ -190,6 +191,8 @@ public final class Ui {
     /** A world label: a dark pill with an optional colour icon, centred on (cx, y). */
     /** Size of the tags the module being drawn right now asks for (its own Tag size), set around each module's overlay. */
     public float tagModuleScale = 1f;
+    /** World tags drawn so far this frame (screen space), so the next one can stack above instead of on top. */
+    private final java.util.List<float[]> tagsThisFrame = new java.util.ArrayList<>();
 
     /**
      * A label floating in the world, centred at {@code cx} with its top at {@code y} (screen units, from
@@ -216,6 +219,25 @@ public final class Ui {
             if (near < reach) alpha *= 0.25f + 0.75f * near / reach;
         }
         if (alpha <= 0.02f) return;
+        // tags that would land on one already drawn this frame stack above it, with a thin line back to their spot
+        float hw = w * scale / 2f, th = 14 * scale;
+        float wantY = ay;
+        for (int guard = 0; guard < 12; guard++) {
+            float[] hit = null;
+            for (float[] r : tagsThisFrame) {
+                if (ax - hw < r[2] && ax + hw > r[0] && ay - th < r[3] && ay > r[1]) {
+                    hit = r;
+                    break;
+                }
+            }
+            if (hit == null) break;
+            ay = hit[1] - 1;
+        }
+        tagsThisFrame.add(new float[]{ax - hw, ay - th, ax + hw, ay});
+        if (wantY - ay > 2) {
+            int lc = dev.erebus.client.util.Colors.mulAlpha(dev.erebus.client.util.Colors.withAlpha(color, 0x90), alpha);
+            Render2D.rect(g, Math.round(ax), Math.round(ay), 1, Math.round(wantY - ay), lc);
+        }
         g.pose().pushMatrix();
         g.pose().translate(ax, ay);
         g.pose().scale(scale, scale);
